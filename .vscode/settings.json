@@ -1,6 +1,7 @@
 {
-    "cSpell.words": [
-        "satoshi"
-    ],
-    "git.openRepositoryInParentFolders": "never"
+  "cSpell.words": [
+    "satoshi"
+  ],
+  "git.openRepositoryInParentFolders": "never",
+  "dart.flutterSdkPath": ".fvm/versions/3.32.8"
 }
