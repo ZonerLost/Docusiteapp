@@ -325,7 +325,7 @@ class _FilesAndDocuments extends StatelessWidget {
           size: 16,
           weight: FontWeight.w500,
           color: kSecondaryColor,
-          paddingBottom: 12,
+          paddingBottom: 10,
         ),
         ListView.separated(
           separatorBuilder: (context, index) {
@@ -334,83 +334,150 @@ class _FilesAndDocuments extends StatelessWidget {
           physics: BouncingScrollPhysics(),
           padding: AppSizes.ZERO,
           shrinkWrap: true,
-          itemCount: 10,
+          itemCount: 4,
           itemBuilder: (context, index) {
-            return GestureDetector(
-              onTap: () {
-                Get.to(() => PdfDetails());
+            final List<Map<String, dynamic>> _items = [
+              {
+                'type': 'STRUCTURAL',
+                'files': [
+                  {'name': 'structural1.pdf', 'lastUpdated': '2 mins ago'},
+                  {'name': 'structural2.pdf', 'lastUpdated': '5 hours ago'},
+                ],
               },
-              child: Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: kFillColor,
-                  border: Border.all(color: kBorderColor, width: 1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              {
+                'type': 'MVP',
+                'files': [
+                  {'name': 'mvp1.pdf', 'lastUpdated': '1 day ago'},
+                ],
+              },
+              {
+                'type': 'Architectural',
+                'files': [
+                  {'name': 'arch1.pdf', 'lastUpdated': '1 week ago'},
+                  {'name': 'arch2.pdf', 'lastUpdated': '2 weeks ago'},
+                  {'name': 'arch3.pdf', 'lastUpdated': '3 weeks ago'},
+                ],
+              },
+              {
+                'type': 'Electrical',
+                'files': [
+                  {'name': 'electrical1.pdf', 'lastUpdated': '1 month ago'},
+                ],
+              },
+              {
+                'type': 'Others',
+                'files': [
+                  {'name': 'other1.pdf', 'lastUpdated': '2 months ago'},
+                ],
+              },
+            ];
+            return Column(
+              children: [
+                SizedBox(height: 8),
+                Row(
                   children: [
-                    if (index == 0)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          spacing: 6,
-                          mainAxisSize: MainAxisSize.min,
-                          children: List.generate(2, (index) {
-                            return Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: kRedColor.withValues(alpha: .08),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
-                                  width: 1.0,
-                                  color: kRedColor.withValues(alpha: .08),
-                                ),
-                              ),
-                              child: MyText(
-                                text: index != 0
-                                    ? '2 new comments'
-                                    : '2 new images',
-                                size: 12,
-                                color: kRedColor,
-                                weight: FontWeight.w500,
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-
-                    Row(
-                      children: [
-                        Image.asset(Assets.imagesPdf, height: 40, width: 40),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              MyText(
-                                size: 14,
-                                weight: FontWeight.w700,
-                                text: 'Kitchendrawing.pdf',
-                              ),
-                              MyText(
-                                paddingTop: 4,
-                                size: 12,
-                                color: kQuaternaryColor,
-                                text: 'Last updated : 2 mins ago',
-                              ),
-                            ],
-                          ),
-                        ),
-                        Image.asset(Assets.imagesArrowNext, height: 24),
-                      ],
+                    MyText(
+                      text: _items[index]['type'],
+                      weight: FontWeight.w500,
+                    ),
+                    MyText(
+                      paddingLeft: 6,
+                      text: _items[index]['files'].length > 1
+                          ? ' ${_items[index]['files'].length} files'
+                          : ' (1 file)',
+                      color: kQuaternaryColor,
+                      size: 12,
                     ),
                   ],
                 ),
-              ),
+                SizedBox(height: 6),
+                ...List.generate(_items[index]['files'].length, (fileIndex) {
+                  return GestureDetector(
+                    onTap: () {
+                      Get.to(() => PdfDetails());
+                    },
+                    child: Container(
+                      margin: EdgeInsets.only(bottom: 8),
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: kFillColor,
+                        border: Border.all(color: kBorderColor, width: 1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (index == 0 && fileIndex == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Row(
+                                spacing: 6,
+                                mainAxisSize: MainAxisSize.min,
+                                children: List.generate(2, (index) {
+                                  return Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: kRedColor.withValues(alpha: .08),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        width: 1.0,
+                                        color: kRedColor.withValues(alpha: .08),
+                                      ),
+                                    ),
+                                    child: MyText(
+                                      text: index != 0
+                                          ? '2 new comments'
+                                          : '2 new images',
+                                      size: 12,
+                                      color: kRedColor,
+                                      weight: FontWeight.w500,
+                                    ),
+                                  );
+                                }),
+                              ),
+                            ),
+
+                          Row(
+                            children: [
+                              Image.asset(
+                                Assets.imagesPdf,
+                                height: 40,
+                                width: 40,
+                              ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    MyText(
+                                      size: 14,
+                                      weight: FontWeight.w700,
+                                      text:
+                                          _items[index]['files'][fileIndex]['name'],
+                                    ),
+                                    MyText(
+                                      paddingTop: 4,
+                                      size: 12,
+                                      color: kQuaternaryColor,
+                                      text:
+                                          'Last updated : ${_items[index]['files'][fileIndex]['lastUpdated']}',
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Image.asset(Assets.imagesArrowNext, height: 24),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
             );
           },
         ),
@@ -597,7 +664,7 @@ class _AddNewPdfState extends State<_AddNewPdf> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: Get.height * 0.55,
+      height: Get.height * 0.4,
       margin: EdgeInsets.only(top: 55),
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -611,13 +678,13 @@ class _AddNewPdfState extends State<_AddNewPdf> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           MyText(
-            text: 'Add new PDF',
+            text: 'Select Category',
             size: 18,
             weight: FontWeight.w500,
             paddingBottom: 8,
           ),
           MyText(
-            text: 'Please enter the correct information to add a new PDF.',
+            text: 'Choose a category for you PDF file.',
             color: kQuaternaryColor,
             weight: FontWeight.w500,
             size: 13,
@@ -638,10 +705,11 @@ class _AddNewPdfState extends State<_AddNewPdf> {
                   hintText: 'Select PDF type',
                   items: [
                     'Select PDF type',
-                    'Structural',
+                    'STRUCTURAL',
                     'MVP',
                     'Architectural',
-                    'Other',
+                    'Electrical',
+                    'Others',
                   ],
                   selectedValue: selectedPdfType,
                   onChanged: (v) {
@@ -650,11 +718,11 @@ class _AddNewPdfState extends State<_AddNewPdf> {
                     });
                   },
                 ),
-                if (selectedPdfType == 'Other')
-                  SimpleTextField(
-                    labelText: 'Other',
-                    hintText: 'Enter other PDF type',
-                  ),
+                // if (selectedPdfType == 'Other')
+                //   SimpleTextField(
+                //     labelText: 'Other',
+                //     hintText: 'Enter other PDF type',
+                //   ),
               ],
             ),
           ),
