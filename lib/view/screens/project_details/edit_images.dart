@@ -8,6 +8,7 @@ import 'package:docu_site/view/screens/project_details/pdf_open_camera.dart';
 import 'package:docu_site/view/widget/common_image_view_widget.dart';
 import 'package:docu_site/view/widget/custom_app_bar.dart';
 import 'package:docu_site/view/widget/my_button_widget.dart';
+import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/route_manager.dart';
@@ -30,6 +31,9 @@ class EditImages extends StatelessWidget {
                 buttonText: 'Done',
                 onTap: () {
                   Get.back();
+                  Get.back();
+                  Get.back();
+                  Get.bottomSheet(_AddNotes(), isScrollControlled: true);
                 },
                 height: 36,
                 textSize: 14,
@@ -144,6 +148,119 @@ class _MenuItem extends StatelessWidget {
             size: 12,
             weight: FontWeight.w500,
             color: kTertiaryColor.withValues(alpha: .7),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddNotes extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: Get.height * 0.5,
+      margin: EdgeInsets.only(top: 55),
+      padding: EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: kPrimaryColor,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12),
+          topRight: Radius.circular(12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MyText(
+            paddingLeft: 16,
+            paddingRight: 16,
+            text: 'Add Notes',
+            size: 18,
+            weight: FontWeight.w500,
+            paddingBottom: 8,
+          ),
+          MyText(
+            paddingLeft: 16,
+            paddingRight: 16,
+            text: 'Add important notes to this annotation.',
+            color: kQuaternaryColor,
+            weight: FontWeight.w500,
+            size: 13,
+          ),
+          Container(
+            height: 1,
+            color: kBorderColor,
+            margin: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          ),
+          Expanded(
+            child: ListView(
+              shrinkWrap: true,
+              padding: AppSizes.ZERO,
+              physics: BouncingScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: 64,
+                  child: ListView.separated(
+                    itemCount: 4,
+                    physics: BouncingScrollPhysics(),
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    scrollDirection: Axis.horizontal,
+                    itemBuilder: (context, index) {
+                      if (index < 3)
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            CommonImageView(
+                              width: 64,
+                              height: 64,
+                              radius: 12,
+                              fit: BoxFit.cover,
+                              url: dummyImg,
+                            ),
+                            Positioned(
+                              top: 0,
+                              right: -6,
+                              child: Image.asset(
+                                Assets.imagesRemoveImage,
+                                height: 20,
+                              ),
+                            ),
+                          ],
+                        );
+                      else
+                        return Image.asset(
+                          Assets.imagesAddImage,
+                          height: 64,
+                          width: 64,
+                        );
+                    },
+                    separatorBuilder: (context, index) {
+                      return SizedBox(width: 18);
+                    },
+                  ),
+                ),
+                SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SimpleTextField(
+                    labelText: 'Notes',
+                    hintText: 'Add your notes here',
+                    maxLines: 5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: MyButton(
+              buttonText: 'Add',
+              onTap: () {
+                Get.back();
+                Get.to(() => EditImages());
+              },
+            ),
           ),
         ],
       ),

@@ -25,12 +25,21 @@ class _ChatScreenState extends State<ChatScreen> {
       "text":
           "I only have 5 minutes to place a bet, give me the best bet for today!",
       "time": _formatTime(DateTime.now()),
+      "username": "You",
     },
     {
       "role": "assistant",
       "text":
           "Lamine Yamal is currently averaging 6 regular shots and 2.7 Shots on target per game playing at home. Real Madrid allows most shots per goal to right wingers in La Liga, they concede 7 Shots on target playing away",
       "time": _formatTime(DateTime.now()),
+      "username": "Hellen",
+    },
+    {
+      "role": "assistant",
+      "text":
+          "Lamine Yamal is currently averaging 6 regular shots and 2.7 Shots on target per game playing at home. Real Madrid allows most shots per goal to right wingers in La Liga, they concede 7 Shots on target playing away",
+      "time": _formatTime(DateTime.now()),
+      "username": "James",
     },
   ];
 
@@ -51,6 +60,7 @@ class _ChatScreenState extends State<ChatScreen> {
         "text": text,
         "time": _formatTime(now),
         "date": DateTime(now.year, now.month, now.day),
+        "username": "You",
       });
       _controller.clear();
       _messages.add({
@@ -58,6 +68,7 @@ class _ChatScreenState extends State<ChatScreen> {
         "text": "(AI response placeholder)",
         "time": _formatTime(now),
         "date": DateTime(now.year, now.month, now.day),
+        "username": "Hellen",
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -189,13 +200,30 @@ class _ChatScreenState extends State<ChatScreen> {
                   color: isUser ? kSecondaryColor : kFillColor,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  msg["text"] ?? '',
-                  style: TextStyle(
-                    color: isUser ? kFillColor : kTertiaryColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!isUser && msg["username"] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0),
+                        child: Text(
+                          msg["username"],
+                          style: TextStyle(
+                            color: kSecondaryColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    Text(
+                      msg["text"] ?? '',
+                      style: TextStyle(
+                        color: isUser ? kFillColor : kTertiaryColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

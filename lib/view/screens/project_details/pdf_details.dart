@@ -2,8 +2,11 @@ import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_images.dart';
 import 'package:docu_site/constants/app_sizes.dart';
 import 'package:docu_site/view/screens/project_details/pdf_open_camera.dart';
+import 'package:docu_site/view/screens/project_details/review_pdf.dart';
 import 'package:docu_site/view/widget/custom_app_bar.dart';
 import 'package:docu_site/view/widget/custom_dialog_widget.dart';
+import 'package:docu_site/view/widget/custom_drop_down_widget.dart';
+import 'package:docu_site/view/widget/custom_tag_field_widget.dart';
 import 'package:docu_site/view/widget/my_button_widget.dart';
 import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
@@ -48,18 +51,7 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
               child: MyButton(
                 buttonText: 'Save & Export',
                 onTap: () {
-                  Get.bottomSheet(
-                    CustomDialog(
-                      image: Assets.imagesExport,
-                      title: 'Export PDF Report',
-                      subTitle: 'Are you sure want to export this pdf?',
-                      buttonText: 'Yes, Export',
-                      onTap: () {
-                        Get.back();
-                      },
-                    ),
-                    isScrollControlled: false,
-                  );
+                  Get.bottomSheet(_ExportPDF(), isScrollControlled: true);
                 },
                 height: 36,
                 textSize: 14,
@@ -89,7 +81,7 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
           if (selectedIndex == 1)
             Positioned(
               right: 20,
-              bottom: 80,
+              bottom: 100,
               child: Column(
                 spacing: 8,
                 mainAxisAlignment: MainAxisAlignment.start,
@@ -107,8 +99,8 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
               ),
             ),
           Sheet(
-            initialExtent: 50,
-            minExtent: 50,
+            initialExtent: 80,
+            minExtent: 80,
             maxExtent: 280,
             child: Container(
               padding: AppSizes.DEFAULT,
@@ -287,6 +279,177 @@ class _AddNotes extends StatelessWidget {
           ),
           MyButton(
             buttonText: 'Add',
+            onTap: () {
+              Get.back();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExportPDF extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: Get.height * 0.8,
+      margin: EdgeInsets.only(top: 55),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kPrimaryColor,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12),
+          topRight: Radius.circular(12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MyText(
+            text: 'Add Info',
+            size: 18,
+            weight: FontWeight.w500,
+            paddingBottom: 8,
+          ),
+          MyText(
+            text: 'Please enter the correct information to export a pdf.',
+            color: kQuaternaryColor,
+            weight: FontWeight.w500,
+            size: 13,
+          ),
+          Container(
+            height: 1,
+            color: kBorderColor,
+            margin: EdgeInsets.symmetric(vertical: 12),
+          ),
+          Expanded(
+            child: ListView(
+              shrinkWrap: true,
+              padding: AppSizes.ZERO,
+              physics: BouncingScrollPhysics(),
+              children: [
+                SimpleTextField(
+                  labelText: 'Project location',
+                  hintText: 'St 3 Wilsons Road, California, USA',
+                ),
+                CustomDropDown(
+                  labelText: 'Status',
+                  hintText: 'Select status',
+                  items: [
+                    'Select status',
+                    'In Progress',
+                    'Completed',
+                    'Pending',
+                  ],
+                  selectedValue: 'In Progress',
+                  onChanged: (v) {},
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: MyText(
+                        text: 'Assign Members',
+                        size: 14,
+                        weight: FontWeight.w500,
+                        color: kQuaternaryColor,
+                      ),
+                    ),
+                    MyText(
+                      onTap: () {
+                        Get.bottomSheet(
+                          _InviteNewMember(),
+                          isScrollControlled: true,
+                        );
+                      },
+                      text: '+ Invite new member',
+                      size: 14,
+                      weight: FontWeight.w500,
+                      color: kSecondaryColor,
+                    ),
+                  ],
+                ),
+                SizedBox(height: 4),
+                CustomTagField(),
+                SimpleTextField(
+                  labelText: 'Description',
+                  hintText: 'Lorem ipsum dolor aist amaet',
+                  maxLines: 3,
+                ),
+                SimpleTextField(
+                  labelText: 'Conclusion',
+                  hintText: 'Lorem ipsum dolor aist amaet',
+                  maxLines: 3,
+                ),
+              ],
+            ),
+          ),
+          MyButton(
+            buttonText: 'Continue',
+            onTap: () {
+              Get.back();
+              Get.to(() => ReviewPdf());
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InviteNewMember extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: Get.height * 0.5,
+      margin: EdgeInsets.only(top: 55),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kPrimaryColor,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12),
+          topRight: Radius.circular(12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MyText(
+            text: 'Invite new member',
+            size: 18,
+            weight: FontWeight.w500,
+            paddingBottom: 8,
+          ),
+          MyText(
+            text: 'Please enter the correct information to add a new member.',
+            color: kQuaternaryColor,
+            weight: FontWeight.w500,
+            size: 13,
+          ),
+          Container(
+            height: 1,
+            color: kBorderColor,
+            margin: EdgeInsets.symmetric(vertical: 12),
+          ),
+          Expanded(
+            child: ListView(
+              shrinkWrap: true,
+              padding: AppSizes.ZERO,
+              physics: BouncingScrollPhysics(),
+              children: [
+                SimpleTextField(
+                  labelText: 'Member Name',
+                  hintText: 'Chris Taylor',
+                ),
+                SimpleTextField(
+                  labelText: 'Member email address',
+                  hintText: 'chris345@gmail.com',
+                ),
+              ],
+            ),
+          ),
+          MyButton(
+            buttonText: 'Send Invite ',
             onTap: () {
               Get.back();
             },

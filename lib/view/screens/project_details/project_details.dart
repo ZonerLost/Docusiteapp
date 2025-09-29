@@ -194,38 +194,66 @@ class ProjectDetails extends StatelessWidget {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Container(
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: isStatus
-                                              ? kOrangeColor.withValues(
-                                                  alpha: 0.08,
-                                                )
-                                              : kGreyColor2,
-                                          borderRadius: BorderRadius.circular(
-                                            4,
+                                      if (details[index]['title'] == 'Location')
+                                        Expanded(
+                                          child: Container(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: kGreyColor2,
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                              border: Border.all(
+                                                width: 1.0,
+                                                color: kBorderColor,
+                                              ),
+                                            ),
+                                            child: MyText(
+                                              text: details[index]['value']!,
+                                              size: 12,
+                                              maxLines: 1,
+                                              textOverflow:
+                                                  TextOverflow.ellipsis,
+                                              color: kTertiaryColor,
+                                              weight: FontWeight.w500,
+                                            ),
                                           ),
-                                          border: Border.all(
-                                            width: 1.0,
+                                        )
+                                      else
+                                        Container(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
                                             color: isStatus
                                                 ? kOrangeColor.withValues(
                                                     alpha: 0.08,
                                                   )
-                                                : kBorderColor,
+                                                : kGreyColor2,
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                            border: Border.all(
+                                              width: 1.0,
+                                              color: isStatus
+                                                  ? kOrangeColor.withValues(
+                                                      alpha: 0.08,
+                                                    )
+                                                  : kBorderColor,
+                                            ),
+                                          ),
+                                          child: MyText(
+                                            text: details[index]['value']!,
+                                            size: 12,
+                                            color: isStatus
+                                                ? kOrangeColor
+                                                : kTertiaryColor,
+                                            weight: FontWeight.w500,
                                           ),
                                         ),
-                                        child: MyText(
-                                          text: details[index]['value']!,
-                                          size: 12,
-                                          color: isStatus
-                                              ? kOrangeColor
-                                              : kTertiaryColor,
-                                          weight: FontWeight.w500,
-                                        ),
-                                      ),
                                     ],
                                   ),
                                   flex: 7,
@@ -290,6 +318,9 @@ class _FilesAndDocuments extends StatelessWidget {
       shrinkWrap: true,
       children: [
         MyText(
+          onTap: () {
+            Get.bottomSheet(_AddNewPdf(), isScrollControlled: true);
+          },
           text: '+ Add new PDF',
           size: 16,
           weight: FontWeight.w500,
@@ -489,7 +520,7 @@ class _AddMember extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: Get.height * 0.5,
+      height: Get.height * 0.55,
       margin: EdgeInsets.only(top: 55),
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -529,6 +560,10 @@ class _AddMember extends StatelessWidget {
                   labelText: 'Member Name',
                   hintText: 'Chris Taylor',
                 ),
+                SimpleTextField(
+                  labelText: 'Email Address',
+                  hintText: 'chris.taylor@email.com',
+                ),
                 CustomDropDown(
                   labelText: 'Member role',
                   hintText: 'Contractor',
@@ -536,6 +571,90 @@ class _AddMember extends StatelessWidget {
                   selectedValue: 'Contractor',
                   onChanged: (v) {},
                 ),
+              ],
+            ),
+          ),
+          MyButton(
+            buttonText: 'Add',
+            onTap: () {
+              Get.back();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddNewPdf extends StatefulWidget {
+  @override
+  State<_AddNewPdf> createState() => _AddNewPdfState();
+}
+
+class _AddNewPdfState extends State<_AddNewPdf> {
+  String selectedPdfType = 'Select PDF type';
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: Get.height * 0.55,
+      margin: EdgeInsets.only(top: 55),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kPrimaryColor,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12),
+          topRight: Radius.circular(12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MyText(
+            text: 'Add new PDF',
+            size: 18,
+            weight: FontWeight.w500,
+            paddingBottom: 8,
+          ),
+          MyText(
+            text: 'Please enter the correct information to add a new PDF.',
+            color: kQuaternaryColor,
+            weight: FontWeight.w500,
+            size: 13,
+          ),
+          Container(
+            height: 1,
+            color: kBorderColor,
+            margin: EdgeInsets.symmetric(vertical: 12),
+          ),
+          Expanded(
+            child: ListView(
+              shrinkWrap: true,
+              padding: AppSizes.ZERO,
+              physics: BouncingScrollPhysics(),
+              children: [
+                CustomDropDown(
+                  labelText: 'PDF type',
+                  hintText: 'Select PDF type',
+                  items: [
+                    'Select PDF type',
+                    'Structural',
+                    'MVP',
+                    'Architectural',
+                    'Other',
+                  ],
+                  selectedValue: selectedPdfType,
+                  onChanged: (v) {
+                    setState(() {
+                      selectedPdfType = v;
+                    });
+                  },
+                ),
+                if (selectedPdfType == 'Other')
+                  SimpleTextField(
+                    labelText: 'Other',
+                    hintText: 'Enter other PDF type',
+                  ),
               ],
             ),
           ),
