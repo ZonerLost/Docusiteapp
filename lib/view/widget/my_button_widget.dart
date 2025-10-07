@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../../constants/app_colors.dart';
 import 'my_text_widget.dart';
 
@@ -16,20 +15,24 @@ class MyButton extends StatelessWidget {
     this.bgColor,
     this.textColor,
     this.disabled = false,
+    this.isLoading = false,
   });
 
   final String buttonText;
-  final VoidCallback onTap;
+  final VoidCallback? onTap; // Already nullable
   double? height, textSize, radius;
   FontWeight? weight;
   Widget? customChild;
   Color? bgColor, textColor;
   final bool disabled;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
+    final bool isInactive = disabled || isLoading;
+
     return Opacity(
-      opacity: disabled ? 0.5 : 1.0,
+      opacity: isInactive ? 0.5 : 1.0,
       child: Container(
         height: height,
         decoration: BoxDecoration(
@@ -39,18 +42,24 @@ class MyButton extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: disabled ? null : onTap,
-            splashColor: disabled
-                ? Colors.transparent
-                : kPrimaryColor.withValues(alpha: 0.1),
-            highlightColor: disabled
-                ? Colors.transparent
-                : kPrimaryColor.withValues(alpha: 0.1),
+            onTap: isInactive ? null : onTap,
+            splashColor: isInactive ? Colors.transparent : kPrimaryColor.withOpacity(0.1),
+            highlightColor: isInactive ? Colors.transparent : kPrimaryColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(radius ?? 12),
-            child:
-                customChild ??
+            child: customChild ??
                 Center(
-                  child: MyText(
+                  child: isLoading
+                      ? SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        textColor ?? kPrimaryColor,
+                      ),
+                    ),
+                  )
+                      : MyText(
                     text: buttonText,
                     size: textSize ?? 16,
                     weight: weight ?? FontWeight.w500,
@@ -77,46 +86,56 @@ class MyBorderButton extends StatelessWidget {
     this.textColor,
     this.bgColor,
     this.borderColor,
+    this.disabled = false, // Added to support disabled state
   });
 
   final String buttonText;
-  final VoidCallback onTap;
+  final VoidCallback? onTap; // Changed to nullable
   double? height, textSize, radius;
   FontWeight? weight;
   Widget? customChild;
   Color? textColor;
   Color? bgColor;
   Color? borderColor;
+  final bool disabled; // New field
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius ?? 12),
-        border: Border.all(
-          color: borderColor ?? textColor ?? kSecondaryColor,
-          width: 1,
-        ),
-        color: bgColor ?? Colors.transparent,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          splashColor: kTertiaryColor.withValues(alpha: 0.1),
-          highlightColor: kTertiaryColor.withValues(alpha: 0.1),
+    final bool isInactive = disabled || onTap == null; // Consider null onTap as disabled
+
+    return Opacity(
+      opacity: isInactive ? 0.5 : 1.0, // Fade when disabled
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(radius ?? 12),
-          child:
-              customChild ??
-              Center(
-                child: MyText(
-                  text: buttonText,
-                  size: textSize ?? 16,
-                  weight: weight ?? FontWeight.w500,
-                  color: textColor ?? kTertiaryColor,
+          border: Border.all(
+            color: isInactive
+                ? (borderColor ?? textColor ?? kSecondaryColor).withOpacity(0.5)
+                : borderColor ?? textColor ?? kSecondaryColor,
+            width: 1,
+          ),
+          color: bgColor ?? Colors.transparent,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: isInactive ? null : onTap, // Disable tap when inactive
+            splashColor: isInactive ? Colors.transparent : kTertiaryColor.withOpacity(0.1),
+            highlightColor: isInactive ? Colors.transparent : kTertiaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(radius ?? 12),
+            child: customChild ??
+                Center(
+                  child: MyText(
+                    text: buttonText,
+                    size: textSize ?? 16,
+                    weight: weight ?? FontWeight.w500,
+                    color: isInactive
+                        ? (textColor ?? kTertiaryColor).withOpacity(0.5)
+                        : textColor ?? kTertiaryColor,
+                  ),
                 ),
-              ),
+          ),
         ),
       ),
     );

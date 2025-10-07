@@ -172,7 +172,7 @@ class Assets {
 
   /// Assets for imagesLogo
   /// assets/images/logo.jpg
-  static const String imagesLogo = "assets/images/logo.jpg";
+  static const String imagesLogo = "assets/images/app_icon.png";
 
   /// Assets for imagesLogout
   /// assets/images/logout.png

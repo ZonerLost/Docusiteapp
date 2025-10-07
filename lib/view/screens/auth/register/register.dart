@@ -13,28 +13,13 @@ import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:get/get.dart';
 
-class Register extends StatefulWidget {
-  @override
-  State<Register> createState() => _RegisterState();
-}
+import '../../../../view_model/auth/register_view_model.dart';
 
-class _RegisterState extends State<Register> {
-  late TextEditingController _emailController;
-  late TextEditingController _passwordController;
+class Register extends StatelessWidget {
+  Register({super.key});
 
-  @override
-  void initState() {
-    super.initState();
-    _emailController = TextEditingController();
-    _passwordController = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
+  // Instantiate the controller once
+  final RegisterViewModel _viewModel = Get.put(RegisterViewModel());
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +50,7 @@ class _RegisterState extends State<Register> {
             subTitle: 'Please enter the Information to get started.',
           ),
           MyTextField(
-            controller: _emailController,
+            controller: _viewModel.nameController, // Use controller from ViewModel
             labelText: 'Full name',
             hintText: 'Enter your full name',
             suffix: Column(
@@ -74,7 +59,7 @@ class _RegisterState extends State<Register> {
             ),
           ),
           MyTextField(
-            controller: _emailController,
+            controller: _viewModel.emailController, // Use controller from ViewModel
             labelText: 'Email address',
             hintText: 'Enter your email',
             suffix: Column(
@@ -83,7 +68,7 @@ class _RegisterState extends State<Register> {
             ),
           ),
           MyTextField(
-            controller: _passwordController,
+            controller: _viewModel.passwordController, // Use controller from ViewModel
             marginBottom: 40,
             labelText: 'Create password',
             hintText: '********',
@@ -94,54 +79,66 @@ class _RegisterState extends State<Register> {
             ),
           ),
 
-          Row(
-            spacing: 8,
-            children: [
-              CustomCheckBox(isActive: false, onTap: () {}),
-              Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontFamily: AppFonts.SFProDisplay,
-                      color: kTertiaryColor,
-                      fontWeight: FontWeight.w500,
+          // --- Terms & Conditions Checkbox (Connected to ViewModel) ---
+          Obx(
+                () => Row(
+              spacing: 8,
+              children: [
+                CustomCheckBox(
+                  isActive: _viewModel.agreedToTerms.value,
+                  onTap: () {
+                    _viewModel.agreedToTerms.toggle(); // Toggle the RxBool state
+                  },
+                ),
+                Expanded(
+                  child: RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontFamily: AppFonts.SFProDisplay,
+                        color: kTertiaryColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: 'I agree to the ',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: kTertiaryColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'Terms & Conditions',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: kSecondaryColor,
+                            fontWeight: FontWeight.w500,
+                            decoration: TextDecoration.underline,
+                          ),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = () {
+                              // Handle Terms & Conditions tap (e.g., navigate to a web view)
+                            },
+                        ),
+                      ],
                     ),
-                    children: [
-                      TextSpan(
-                        text: 'I agree to the ',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: kTertiaryColor,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      TextSpan(
-                        text: 'Terms & Conditions',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: kSecondaryColor,
-                          fontWeight: FontWeight.w500,
-                          decoration: TextDecoration.underline,
-                        ),
-                        recognizer: TapGestureRecognizer()
-                          ..onTap = () {
-                            // Handle Terms & Conditions tap
-                          },
-                      ),
-                    ],
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           SizedBox(height: 24),
-          MyButton(
-            buttonText: 'Continue',
-            onTap: () {
-              Get.to(() => VerificationCode());
-            },
+
+          // --- Continue Button (Connected to ViewModel) ---
+          Obx(
+                () => MyButton(
+              buttonText: 'Continue',
+              isLoading: _viewModel.loading.value, // Show loading state
+              onTap: _viewModel.loading.value ? null : _viewModel.register, // Call the register function
+            ),
           ),
+
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20),
             child: Row(
@@ -158,11 +155,28 @@ class _RegisterState extends State<Register> {
               ],
             ),
           ),
+
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             spacing: 8,
             children: [
-              Image.asset(Assets.imagesGoogle, height: 48),
+              // Google Sign-In Button
+              GestureDetector(
+                onTap: _viewModel.loading.value ? null : _viewModel.signInWithGoogle,
+                child: Image.asset(Assets.imagesGoogle, height: 48),
+              ),
+
+              // Apple Sign-In Button (Conditional for iOS)
+              Obx(() {
+                if (_viewModel.isAppleSignInAvailable.value) {
+                  return GestureDetector(
+                    // onTap: _viewModel.loading.value ? null : _viewModel.signInWithApple,
+                    child: Image.asset(Assets.imagesApple, height: 48),
+                  );
+                }
+                // If not iOS or not available, don't show the Apple button
+                return const SizedBox.shrink();
+              }),
               Image.asset(Assets.imagesApple, height: 48),
             ],
           ),

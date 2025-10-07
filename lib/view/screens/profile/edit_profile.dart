@@ -2,29 +2,35 @@ import 'package:flutter/material.dart';
 import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_images.dart';
 import 'package:docu_site/constants/app_sizes.dart';
-import 'package:docu_site/main.dart';
 import 'package:docu_site/view/widget/common_image_view_widget.dart';
 import 'package:docu_site/view/widget/custom_app_bar.dart';
 import 'package:docu_site/view/widget/my_button_widget.dart';
 import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 
-class EditProfile extends StatelessWidget {
+import '../../../view_model/edit_profile/edit_profile_controller.dart'; // Import image_picker
+
+// Change to GetView for direct access to the controller
+class EditProfile extends GetView<EditProfileController> {
   const EditProfile({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Initialize the controller
+    final controller = Get.put(EditProfileController());
+
     return Scaffold(
       appBar: simpleAppBar(title: "Edit Profile"),
       body: ListView(
         shrinkWrap: true,
         padding: AppSizes.DEFAULT,
-        physics: BouncingScrollPhysics(),
+        physics: const BouncingScrollPhysics(),
         children: [
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           Container(
-            padding: EdgeInsets.all(12),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               color: kFillColor,
@@ -32,14 +38,26 @@ class EditProfile extends StatelessWidget {
             ),
             child: Row(
               children: [
-                CommonImageView(
-                  height: 44,
-                  width: 44,
-                  radius: 100.0,
-                  url: dummyImg,
-                ),
-                SizedBox(width: 8),
-                Expanded(
+                // Use Obx to make the image view reactive
+                Obx(() {
+                  // Display selected local image if available, otherwise network image
+                  ImageProvider<Object> imageProvider;
+                  if (controller.imageFile.value != null) {
+                    imageProvider = FileImage(controller.imageFile.value!);
+                  } else if (controller.networkImageUrl.value.isNotEmpty) {
+                    imageProvider = NetworkImage(controller.networkImageUrl.value);
+                  } else {
+                    // Fallback to a dummy/placeholder image
+                    imageProvider = AssetImage(Assets.imagesCamera);
+                  }
+
+                  return CircleAvatar(
+                    radius: 22,
+                    backgroundImage: imageProvider,
+                  );
+                }),
+                const SizedBox(width: 8),
+                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -64,12 +82,39 @@ class EditProfile extends StatelessWidget {
                     borderColor: kSecondaryColor,
                     height: 30,
                     buttonText: '',
-                    onTap: () {},
+                    onTap: () {
+                      // Show options to pick from camera or gallery
+                      Get.bottomSheet(
+                        Container(
+                          color: Colors.white,
+                          child: Wrap(
+                            children: <Widget>[
+                              ListTile(
+                                leading: const Icon(Icons.photo_library),
+                                title: const Text('Gallery'),
+                                onTap: () {
+                                  controller.pickImage(ImageSource.gallery);
+                                  Get.back();
+                                },
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.photo_camera),
+                                title: const Text('Camera'),
+                                onTap: () {
+                                  controller.pickImage(ImageSource.camera);
+                                  Get.back();
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                     radius: 8,
                     customChild: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        MyText(
+                         MyText(
                           paddingLeft: 6,
                           paddingRight: 4,
                           text: "Upload",
@@ -89,7 +134,7 @@ class EditProfile extends StatelessWidget {
               ],
             ),
           ),
-          MyText(
+           MyText(
             text: 'PERSONAL INFORMATION',
             size: 12,
             weight: FontWeight.w500,
@@ -98,8 +143,14 @@ class EditProfile extends StatelessWidget {
             letterSpacing: 1.0,
             paddingBottom: 16,
           ),
-          MyTextField(labelText: "Full Name", hintText: 'Kevin Backer'),
+          // Connect text fields to controllers
           MyTextField(
+            controller: controller.nameController,
+            labelText: "Full Name",
+            hintText: 'Kevin Backer',
+          ),
+          MyTextField(
+            controller: controller.emailController,
             labelText: "Email Address",
             hintText: 'Kevinbacker234@gmail.com',
           ),
@@ -107,13 +158,46 @@ class EditProfile extends StatelessWidget {
       ),
       bottomNavigationBar: Padding(
         padding: AppSizes.DEFAULT,
-        child: MyButton(
-          buttonText: "Update",
-          onTap: () {
-            Get.back();
-          },
+        // Use Obx to show a loading indicator on the button
+        child: Obx(
+              () => MyButton(
+            buttonText: controller.isLoading.value ? "" : "Update", // Hide text when loading
+            onTap: controller.isLoading.value ? null : () => controller.updateProfile(),
+            // Show a progress indicator when loading
+            customChild: controller.isLoading.value
+                ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2.0,
+              ),
+            )
+                : null,
+          ),
         ),
       ),
     );
   }
 }
+
+// NOTE: I've assumed your MyTextField and MyButton widgets accept a `controller` and `child` property respectively.
+// If not, you may need to adjust them like this:
+
+/*
+// In MyTextField
+final TextEditingController? controller;
+...
+TextFormField(
+  controller: controller,
+  ...
+)
+
+// In MyButton
+final Widget? child;
+...
+ElevatedButton(
+  child: child ?? Text(buttonText),
+  ...
+)
+*/

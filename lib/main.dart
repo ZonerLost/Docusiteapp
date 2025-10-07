@@ -1,9 +1,26 @@
+import 'package:docu_site/services/project_services/firestore_project_services.dart';
+import 'package:docu_site/view/screens/profile/profile.dart';
+import 'package:docu_site/view_model/edit_profile/edit_profile_controller.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:docu_site/config/routes/routes.dart';
 import 'package:get/get.dart';
+import 'config/routes/route_names.dart';
 import 'config/theme/light_theme.dart';
+import 'firebase_options.dart';
 
-void main() {
+void main()async {
+
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  Get.put(ProjectService());
+  Get.put(EditProfileController());
+
   runApp(MyApp());
 }
 
@@ -20,7 +37,7 @@ class MyApp extends StatelessWidget {
       title: 'Docu Site',
       theme: lightTheme,
       themeMode: ThemeMode.light,
-      initialRoute: AppLinks.splash_screen,
+      initialRoute: RouteName.splashScreen,
       getPages: AppRoutes.pages,
       defaultTransition: Transition.fadeIn,
     );

@@ -22,19 +22,19 @@ AppBar simpleAppBar({
     titleSpacing: 0.0,
     leading: haveLeading
         ? leadingWidget ??
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  GestureDetector(
-                    onTap: onLeadingTap ?? () => Get.back(),
-                    child: Image.asset(
-                      Assets.imagesArrowBack,
-                      height: 15,
-                      color: contentColor ?? kTertiaryColor,
-                    ),
-                  ),
-                ],
-              )
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            GestureDetector(
+              onTap: onLeadingTap ?? () => Get.back(),
+              child: Image.asset(
+                Assets.imagesArrowBack,
+                height: 15,
+                color: contentColor ?? kTertiaryColor,
+              ),
+            ),
+          ],
+        )
         : null,
     title: MyText(
       text: title ?? '',
@@ -49,39 +49,3 @@ AppBar simpleAppBar({
         : null,
   );
 }
-
-// AppBar customAppBar({
-//   bool haveLeading = true,
-//   String? title,
-//   Widget? leadingWidget,
-//   bool? centerTitle = true,
-//   List<Widget>? actions,
-//   Color? bgColor,
-//   VoidCallback? onLeadingTap,
-// }) {
-//   return AppBar(
-//     backgroundColor: Colors.transparent,
-//     centerTitle: centerTitle,
-//     automaticallyImplyLeading: false,
-//     titleSpacing: 16.0,
-//     leading: haveLeading
-//         ? leadingWidget ??
-//               Column(
-//                 mainAxisAlignment: MainAxisAlignment.center,
-//                 children: [
-//                   GestureDetector(
-//                     onTap: onLeadingTap ?? () => Get.back(),
-//                     child: Image.asset(Assets.imagesClose, height: 24),
-//                   ),
-//                 ],
-//               )
-//         : null,
-//     title: MyText(
-//       text: title ?? '',
-//       size: 14,
-//       color: kTertiaryColor,
-//       weight: FontWeight.w600,
-//     ),
-//     actions: actions,
-//   );
-// }

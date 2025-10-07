@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:textfield_tags/textfield_tags.dart';
 
 class CustomTagField extends StatefulWidget {
-  const CustomTagField({Key? key, this.labelText, this.marginBottom = 12})
+  const CustomTagField({Key? key, this.labelText, this.marginBottom = 12,this.readOnly,this.tags})
     : super(key: key);
 
   final String? labelText;
   final double? marginBottom;
+  final bool? readOnly;
+  final List<String>? tags;
 
   @override
   State<CustomTagField> createState() => _CustomTagFieldState();

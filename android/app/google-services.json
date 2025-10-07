@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1072828557755",
+    "project_id": "docusite-app",
+    "storage_bucket": "docusite-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1072828557755:android:7bce26cd3486fd7f523c9e",
+        "android_client_info": {
+          "package_name": "com.example.docu_site"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtHexsSgK6C9uDCxcPQpyO7BDZuMblKYA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

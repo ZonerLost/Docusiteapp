@@ -98,7 +98,7 @@ class _AllState extends State<All> {
               itemBuilder: (context, index) {
                 return GestureDetector(
                   onTap: () {
-                    Get.to(() => ProjectDetails());
+                    Get.to(() => ProjectDetails(projectId: '',));
                   },
                   child: Container(
                     margin: EdgeInsets.only(bottom: 10),

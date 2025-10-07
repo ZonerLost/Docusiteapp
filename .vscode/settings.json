@@ -3,5 +3,5 @@
     "satoshi"
   ],
   "git.openRepositoryInParentFolders": "never",
-  "dart.flutterSdkPath": ".fvm/versions/3.32.8"
+  "dart.flutterSdkPath": ".fvm/versions/3.32.1"
 }

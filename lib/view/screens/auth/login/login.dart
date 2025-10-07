@@ -1,3 +1,5 @@
+import 'package:docu_site/config/routes/route_names.dart';
+import 'package:docu_site/view/screens/get_help/help.dart';
 import 'package:docu_site/view/screens/home/home.dart';
 import 'package:docu_site/view/widget/custom_app_bar.dart';
 import 'package:flutter/material.dart';
@@ -13,28 +15,12 @@ import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:get/get.dart';
 
-class Login extends StatefulWidget {
-  @override
-  State<Login> createState() => _LoginState();
-}
+import '../../../../view_model/auth/login_view_model.dart';
 
-class _LoginState extends State<Login> {
-  late TextEditingController _emailController;
-  late TextEditingController _passwordController;
+class Login extends StatelessWidget {
+  Login({super.key});
 
-  @override
-  void initState() {
-    super.initState();
-    _emailController = TextEditingController();
-    _passwordController = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
+  final LoginViewModel _viewModel = Get.put(LoginViewModel());
 
   @override
   Widget build(BuildContext context) {
@@ -43,13 +29,16 @@ class _LoginState extends State<Login> {
         bgColor: Colors.transparent,
         haveLeading: false,
         actions: [
-          Center(
-            child: MyText(
-              text: 'Get Help',
-              size: 16,
-              weight: FontWeight.w500,
-              paddingRight: 20,
-              color: kSecondaryColor,
+          InkWell(
+            onTap: (){Get.toNamed(RouteName.getHelp);},
+            child: Center(
+              child: MyText(
+                text: 'Get Help',
+                size: 16,
+                weight: FontWeight.w500,
+                paddingRight: 20,
+                color: kSecondaryColor,
+              ),
             ),
           ),
         ],
@@ -57,7 +46,7 @@ class _LoginState extends State<Login> {
       body: ListView(
         shrinkWrap: true,
         padding: AppSizes.DEFAULT,
-        physics: BouncingScrollPhysics(),
+        physics: const BouncingScrollPhysics(),
         children: [
           AuthHeading(
             marginTop: 0,
@@ -65,7 +54,7 @@ class _LoginState extends State<Login> {
             subTitle: 'Please enter the credentials to get started.',
           ),
           MyTextField(
-            controller: _emailController,
+            controller: _viewModel.emailController,
             labelText: 'Email address',
             hintText: 'Enter your email',
             suffix: Column(
@@ -74,7 +63,7 @@ class _LoginState extends State<Login> {
             ),
           ),
           MyTextField(
-            controller: _passwordController,
+            controller: _viewModel.passwordController,
             marginBottom: 12,
             labelText: 'Password',
             hintText: '********',
@@ -95,25 +84,34 @@ class _LoginState extends State<Login> {
             textAlign: TextAlign.end,
             paddingBottom: 60,
           ),
-          Row(
-            children: [
-              CustomCheckBox(isActive: true, onTap: () {}),
-              Expanded(
-                child: MyText(
-                  text: 'Remember me',
-                  size: 16,
-                  paddingLeft: 8,
-                  weight: FontWeight.w500,
+          // --- Remember Me Checkbox (Reactive) ---
+          Obx(
+                () => Row(
+              children: [
+                CustomCheckBox(
+                  isActive: _viewModel.rememberMe.value,
+                  onTap: () => _viewModel.toggleRememberMe(
+                      !_viewModel.rememberMe.value), // Toggle state
                 ),
-              ),
-            ],
+                Expanded(
+                  child: MyText(
+                    text: 'Remember me',
+                    size: 16,
+                    paddingLeft: 8,
+                    weight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
           SizedBox(height: 24),
-          MyButton(
-            buttonText: 'Login',
-            onTap: () {
-              Get.to(() => Home());
-            },
+          // --- Login Button (Reactive) ---
+          Obx(
+                () => MyButton(
+              buttonText: 'Login',
+              isLoading: _viewModel.loading.value,
+              onTap: _viewModel.loading.value ? null : _viewModel.login,
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20),
@@ -131,11 +129,26 @@ class _LoginState extends State<Login> {
               ],
             ),
           ),
+          // --- Social Sign-in Buttons (Reactive) ---
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             spacing: 8,
             children: [
-              Image.asset(Assets.imagesGoogle, height: 48),
+              // Google Sign-In Button
+              GestureDetector(
+                onTap: _viewModel.loading.value ? null : _viewModel.signInWithGoogle,
+                child: Image.asset(Assets.imagesGoogle, height: 48),
+              ),
+              // Apple Sign-In Button (Conditional for iOS)
+              Obx(() {
+                if (_viewModel.isAppleSignInAvailable.value) {
+                  return GestureDetector(
+                    // onTap: _viewModel.loading.value ? null : _viewModel.signInWithApple,
+                    child: Image.asset(Assets.imagesApple, height: 48),
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
               Image.asset(Assets.imagesApple, height: 48),
             ],
           ),
