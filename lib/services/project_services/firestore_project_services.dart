@@ -26,7 +26,7 @@ class ProjectService extends GetxService {
   /// 1. Create a new project document in Firestore using a Write Batch.
   /// It creates the project in the main /projects collection and adds
   /// a quick reference in the user's /users/{userId}/projects subcollection.
-  Future<void> createProject(Project project) async {
+  Future<String> createProject(Project project) async {
     try {
       if (currentUserId == null) {
         throw Exception("Authentication required to create a project.");
@@ -40,6 +40,7 @@ class ProjectService extends GetxService {
       // 1. Create a new document reference in the top-level 'projects' collection
       final newProjectDocRef = _projectsCollection.doc();
       final projectId = newProjectDocRef.id;
+      print(projectId);
 
       // Add project data to the main collection
       batch.set(newProjectDocRef, projectData);
@@ -54,10 +55,12 @@ class ProjectService extends GetxService {
         'updatedAt': FieldValue.serverTimestamp(),
         // We will fetch the full project details from the main collection later.
       });
+
       // Commit the batch
       await batch.commit();
 
       Utils.snackBar('Success', 'Project "${project.title}" added successfully!');
+      return projectId;
     } catch (e) {
       Utils.snackBar('Creation Failed', 'Could not add project: ${e.toString()}');
       rethrow;

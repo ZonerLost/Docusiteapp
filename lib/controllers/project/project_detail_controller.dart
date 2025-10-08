@@ -1,32 +1,37 @@
+import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:get/get.dart';
 import 'package:docu_site/utils/Utils.dart';
 
+import '../../models/project/collaborator.dart';
 import '../../models/project/project.dart';
 import '../../models/project/project_file.dart';
 import '../../services/project_services/firestore_project_services.dart'; // Assuming this exists for snackbars
 
-// Controller to manage state and logic for the ProjectDetails screen.
+
 class ProjectDetailsController extends GetxController {
   final ProjectService _projectService = Get.find<ProjectService>();
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Observable for the current project data
   final Rx<Project?> project = Rx<Project?>(null);
-
-  // Holds the ID of the project being viewed
   final String projectId;
+  final RxBool isAddingMember = false.obs;
+  final RxBool isUploadingFile = false.obs;
 
-  // Constructor requires the project ID to start fetching data
   ProjectDetailsController({required this.projectId});
 
   @override
   void onInit() {
     super.onInit();
-    // Start streaming the specific project data
     _streamProjectDetails();
   }
 
   void _streamProjectDetails() {
-    // Start listening to the single document stream from the service
     _projectService.streamProject(projectId).listen((projectData) {
       project.value = projectData;
       if (projectData == null && project.value == null) {
@@ -42,7 +47,6 @@ class ProjectDetailsController extends GetxController {
 
     final Map<String, List<ProjectFile>> map = {};
     for (var file in project.value!.files) {
-      // Ensure file category exists before using it as a key
       if (file.category.isNotEmpty) {
         if (!map.containsKey(file.category)) {
           map[file.category] = [];
@@ -53,10 +57,8 @@ class ProjectDetailsController extends GetxController {
     return map;
   }
 
-  // Filters collaborators to get the count
   int get memberCount => project.value?.collaborators.length ?? 0;
 
-  // Get owner name for display
   String get projectOwnerName {
     final ownerId = project.value?.ownerId;
     if (ownerId == null) return 'Unknown Owner';
@@ -67,7 +69,99 @@ class ProjectDetailsController extends GetxController {
     return owner?.name ?? 'Unknown Owner';
   }
 
-  // --- Placeholder Actions (for UI buttons) ---
+  Future<void> addMember(String name, String email, String role) async {
+    if (name.isEmpty || email.isEmpty || !GetUtils.isEmail(email)) {
+      Utils.snackBar('Validation', 'Please enter a valid name and email address.');
+      return;
+    }
+
+    isAddingMember.value = true;
+
+    try {
+      final newMember = Collaborator(
+        uid: email, // Using email as UID for simplicity; adjust as needed
+        email: email,
+        name: name,
+        canEdit: role.toLowerCase() == 'editor', // Example logic for edit access
+        photoUrl: 'https://placehold.co/100x100/A0A0A0/FFFFFF?text=${name.substring(0, 1)}',
+        role: role,
+      );
+
+      // Update main projects collection
+      await _firestore.collection('projects').doc(projectId).update({
+        'collaborators': FieldValue.arrayUnion([newMember.toMap()])
+      });
+
+      // Update user's projects subcollection
+      final currentUserId = _auth.currentUser?.uid;
+      if (currentUserId != null) {
+        await _firestore
+            .collection('users')
+            .doc(currentUserId)
+            .collection('projects')
+            .doc(projectId)
+            .update({
+          'collaborators': FieldValue.arrayUnion([newMember.toMap()])
+        });
+      }
+
+      Utils.snackBar('Success', '$name added to project.');
+    } catch (e) {
+      Utils.snackBar('Error', 'Failed to add member: ${e.toString()}');
+    } finally {
+      isAddingMember.value = false;
+    }
+  }
+
+  Future<void> addNewPdf(String category, String filePath, String fileName) async {
+    isUploadingFile.value = true;
+
+    try {
+      // Upload file to Firebase Storage
+      final storageRef = _storage.ref().child('project_files/$projectId/$fileName');
+      final uploadTask = await storageRef.putData(
+        await File(filePath).readAsBytes(),
+        SettableMetadata(contentType: 'application/pdf'),
+      );
+      final fileUrl = await uploadTask.ref.getDownloadURL();
+
+      // Create new ProjectFile
+      final newFile = ProjectFile(
+        id: projectId,
+        uploadedBy: projectOwnerName,
+        fileName: fileName,
+        category: category,
+        fileUrl: fileUrl,
+        lastUpdated: DateTime.now(),
+        newCommentsCount: 0,
+        newImagesCount: 0,
+      );
+
+      // Update main projects collection
+      await _firestore.collection('projects').doc(projectId).update({
+        'files': FieldValue.arrayUnion([newFile.toMap()])
+      });
+
+      // Update user's projects subcollection
+      final currentUserId = _auth.currentUser?.uid;
+      if (currentUserId != null) {
+        await _firestore
+            .collection('users')
+            .doc(currentUserId)
+            .collection('projects')
+            .doc(projectId)
+            .update({
+          'files': FieldValue.arrayUnion([newFile.toMap()])
+        });
+      }
+
+      Utils.snackBar('Success', 'File "$fileName" uploaded successfully.');
+    } catch (e) {
+      Utils.snackBar('Error', 'Failed to upload file: ${e.toString()}');
+    } finally {
+      isUploadingFile.value = false;
+    }
+  }
 
   void deleteProject() {
     Utils.snackBar('Action', 'Delete project functionality TBD for ID: $projectId.');
@@ -75,17 +169,5 @@ class ProjectDetailsController extends GetxController {
 
   void editProject() {
     Utils.snackBar('Action', 'Edit project functionality TBD for ID: $projectId.');
-  }
-
-  void addMember(String name, String email, String role) {
-    // This logic would involve looking up the user by email/name and adding them
-    // to the project's 'collaborators' array in Firestore.
-    Utils.snackBar('Action', 'Inviting member $name with role $role TBD.');
-  }
-
-  void addNewPdf(String category, String fileUrl, String fileName) {
-    // This logic would involve uploading the file to Firebase Storage
-    // and updating the project's 'files' array in Firestore.
-    Utils.snackBar('Action', 'Upload of "$fileName" to category $category TBD.');
   }
 }

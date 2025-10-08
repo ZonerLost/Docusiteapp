@@ -2,12 +2,13 @@ import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_fonts.dart';
 import 'package:docu_site/constants/app_images.dart';
 import 'package:docu_site/constants/app_sizes.dart';
-import 'package:docu_site/main.dart'; // Contains dummyImg
+import 'package:docu_site/main.dart';
 import 'package:docu_site/view/screens/home/project_invites.dart';
 import 'package:docu_site/view/screens/notifications/notifications.dart';
 import 'package:docu_site/view/screens/profile/profile.dart';
 import 'package:docu_site/view/screens/project_details/project_details.dart';
 import 'package:docu_site/view/widget/common_image_view_widget.dart';
+import 'package:docu_site/view/widget/custom_app_bar.dart';
 import 'package:docu_site/view/widget/custom_check_box_widget.dart';
 import 'package:docu_site/view/widget/custom_drop_down_widget.dart';
 import 'package:docu_site/view/widget/custom_tag_field_widget.dart';
@@ -27,7 +28,6 @@ class Home extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Inject and initialize the ViewModel
     Get.put(HomeViewModel());
 
     return DefaultTabController(
@@ -45,12 +45,9 @@ class Home extends StatelessWidget {
                 backgroundColor: kFillColor,
                 automaticallyImplyLeading: false,
                 titleSpacing: 20.0,
-                // --- PROFILE IMAGE UPDATE START ---
                 title: Obx(() {
-                  // Listen to authentication state changes
                   final user = Get.find<HomeViewModel>().currentUserId.value;
                   final photoUrl = FirebaseAuth.instance.currentUser?.photoURL ?? '';
-
                   return GestureDetector(
                     onTap: () {
                       Get.to(() => const Profile());
@@ -59,14 +56,12 @@ class Home extends StatelessWidget {
                       height: 40,
                       width: 40,
                       radius: 100,
-                      // Use the real photoUrl if available, otherwise fallback to local asset
                       url: photoUrl.isNotEmpty ? photoUrl : dummyImg,
-                      imagePath: photoUrl.isNotEmpty ? photoUrl : dummyImg, // Assuming you have a default profile image asset
+                      imagePath: photoUrl.isNotEmpty ? photoUrl : dummyImg,
                       fit: BoxFit.cover,
                     ),
                   );
                 }),
-                // --- PROFILE IMAGE UPDATE END ---
                 shape: Border(
                   bottom: BorderSide(color: kBorderColor, width: 1.0),
                 ),
@@ -128,12 +123,12 @@ class Home extends StatelessWidget {
                       indicatorWeight: 3,
                       labelColor: kSecondaryColor,
                       unselectedLabelColor: kQuaternaryColor,
-                      labelStyle:  TextStyle(
+                      labelStyle: TextStyle(
                         fontWeight: FontWeight.w500,
                         fontSize: 16,
                         fontFamily: AppFonts.SFProDisplay,
                       ),
-                      unselectedLabelStyle:  TextStyle(
+                      unselectedLabelStyle: TextStyle(
                         fontWeight: FontWeight.w500,
                         fontSize: 16,
                         fontFamily: AppFonts.SFProDisplay,
@@ -157,8 +152,8 @@ class Home extends StatelessWidget {
           body: TabBarView(
             physics: const BouncingScrollPhysics(),
             children: const [
-              All(), // All projects
-              All(filterStatus: 'In progress'), // Filtered by status
+              All(),
+              All(filterStatus: 'In progress'),
               All(filterStatus: 'Completed'),
               All(filterStatus: 'Cancelled'),
             ],
@@ -168,8 +163,6 @@ class Home extends StatelessWidget {
     );
   }
 }
-
-
 
 class All extends StatelessWidget {
   final String? filterStatus;
@@ -189,7 +182,6 @@ class All extends StatelessWidget {
         return const Center(child: CircularProgressIndicator(color: kSecondaryColor));
       }
 
-      // Show Empty State if no projects are available
       if (filteredProjects.isEmpty) {
         return const _EmptyState();
       }
@@ -201,7 +193,6 @@ class All extends StatelessWidget {
             padding: AppSizes.DEFAULT,
             shrinkWrap: true,
             children: [
-              // Pending Invites Card (Static for now)
               GestureDetector(
                 onTap: () {
                   Get.to(() => ProjectInvites());
@@ -228,13 +219,13 @@ class All extends StatelessWidget {
                             MyText(
                               size: 14,
                               weight: FontWeight.w700,
-                              text: '2 Pending Invites',
+                              text: '${viewModel.pendingInvitesCount.value} Pending Invite${viewModel.pendingInvitesCount.value == 1 ? '' : 's'}',
                             ),
                             MyText(
                               paddingTop: 4,
                               size: 12,
                               color: kQuaternaryColor,
-                              text: 'You have received 2 new projects invites.',
+                              text: 'You have received ${viewModel.pendingInvitesCount.value} new project${viewModel.pendingInvitesCount.value == 1 ? '' : 's'} invite${viewModel.pendingInvitesCount.value == 1 ? '' : 's'}.',
                             ),
                           ],
                         ),
@@ -245,7 +236,6 @@ class All extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              // Projects List from Firestore
               ListView.builder(
                 physics: const NeverScrollableScrollPhysics(),
                 padding: AppSizes.ZERO,
@@ -256,10 +246,9 @@ class All extends StatelessWidget {
                   return _ProjectCard(project: project);
                 },
               ),
-              const SizedBox(height: 80), // Padding for the floating button
+              const SizedBox(height: 80),
             ],
           ),
-          // Floating Add New Project Button
           Positioned(
             bottom: 20,
             left: 70,
@@ -267,7 +256,6 @@ class All extends StatelessWidget {
             child: MyButton(
               buttonText: '+ Add new project',
               onTap: () {
-                // Clear form state before opening
                 viewModel.assignedMembers.clear();
                 viewModel.hasEditAccess.value = false;
                 Get.bottomSheet(_AddNewProject(), isScrollControlled: true);
@@ -286,7 +274,6 @@ class _ProjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Calculate display time difference
     final timeDifference = DateTime.now().difference(project.updatedAt);
     String lastUpdated = timeDifference.inMinutes < 60
         ? '${timeDifference.inMinutes} mins ago'
@@ -294,7 +281,7 @@ class _ProjectCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        Get.to(() => ProjectDetails(projectId: project.id)); // Updated to pass project.id
+        Get.to(() => ProjectDetails(projectId: project.id));
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -331,35 +318,36 @@ class _ProjectCard extends StatelessWidget {
                   width: 60,
                   child: Stack(
                     children: List.generate(
-                        project.collaborators.take(3).length, (index) {
-                      final member = project.collaborators[index];
-                      return Container(
-                        margin: EdgeInsets.only(
-                          left: index == 0 ? 0 : index * 16.0,
-                        ),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: kFillColor,
-                            width: 1,
+                      project.collaborators.take(3).length,
+                          (index) {
+                        final member = project.collaborators[index];
+                        return Container(
+                          margin: EdgeInsets.only(
+                            left: index == 0 ? 0 : index * 16.0,
                           ),
-                        ),
-                        child: CommonImageView(
-                          height: 24,
-                          width: 24,
-                          radius: 100,
-                          url: member.photoUrl.isNotEmpty ? member.photoUrl : dummyImg,
-                          fit: BoxFit.cover,
-                        ),
-                      );
-                    }),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: kFillColor,
+                              width: 1,
+                            ),
+                          ),
+                          child: CommonImageView(
+                            height: 24,
+                            width: 24,
+                            radius: 100,
+                            url: member.photoUrl.isNotEmpty ? member.photoUrl : dummyImg,
+                            fit: BoxFit.cover,
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
             Row(
-              spacing: 6,
               children: [
                 Expanded(
                   child: _InfoChip(
@@ -376,7 +364,6 @@ class _ProjectCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            // Progress Indicator
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
@@ -404,8 +391,9 @@ class _ProjectCard extends StatelessWidget {
                         ),
                       ),
                       MyText(
-                          text: '${(project.progress * 100).toInt()}%',
-                          paddingLeft: 20),
+                        text: '${(project.progress * 100).toInt()}%',
+                        paddingLeft: 20,
+                      ),
                     ],
                   ),
                 ],
@@ -418,7 +406,6 @@ class _ProjectCard extends StatelessWidget {
   }
 }
 
-// --- Helper Chip for Project Card ---
 class _InfoChip extends StatelessWidget {
   final String label;
   final String value;

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/Get.dart';
 import '../../models/project/collaborator.dart';
 import '../../models/project/project.dart';
 import '../../../utils/Utils.dart';
@@ -11,22 +11,23 @@ import '../../services/project_services/firestore_project_services.dart'; // Nee
 
 class HomeViewModel extends GetxController {
   final ProjectService _projectService = Get.find<ProjectService>();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-
+  final FirebaseAuth auth = FirebaseAuth.instance;
+  final FirebaseFirestore firestore = FirebaseFirestore.instance;
 
   RxList<Project> projects = <Project>[].obs;
   RxBool isLoadingProjects = true.obs;
   RxString currentUserId = ''.obs;
+  RxInt pendingInvitesCount = 0.obs; // Track number of pending invites
   late StreamSubscription<List<Project>> _projectSubscription;
+  late StreamSubscription<QuerySnapshot> _invitesSubscription;
   final titleController = TextEditingController();
   final clientController = TextEditingController();
   final locationController = TextEditingController();
-  final deadlineController = TextEditingController(); // NOTE: Now controlled by Date Picker
+  final deadlineController = TextEditingController();
   RxList<Collaborator> assignedMembers = <Collaborator>[].obs;
   RxBool isSavingProject = false.obs;
   RxBool hasViewAccess = true.obs;
-  RxBool hasEditAccess = false.obs; // Toggle between View/Edit
-
+  RxBool hasEditAccess = false.obs;
   final memberNameController = TextEditingController();
   final memberEmailController = TextEditingController();
   RxBool isInvitingMember = false.obs;
@@ -37,23 +38,21 @@ class HomeViewModel extends GetxController {
     super.onInit();
   }
 
-  // Initialize and listen to Auth State
   void _initAuthState() {
-    // Ensure we have a UID before streaming projects
-    _auth.authStateChanges().listen((User? user) {
+    auth.authStateChanges().listen((User? user) {
       if (user != null) {
         currentUserId.value = user.uid;
         _startProjectStream();
+        _startInvitesStream();
       } else {
         currentUserId.value = '';
         projects.clear();
+        pendingInvitesCount.value = 0;
         isLoadingProjects.value = false;
-        // Handle navigation to login if needed
       }
     });
   }
 
-  // Start real-time subscription to projects
   void _startProjectStream() {
     if (currentUserId.value.isEmpty) {
       projects.clear();
@@ -68,10 +67,10 @@ class HomeViewModel extends GetxController {
         projects.value = projectList;
         isLoadingProjects.value = false;
         if (projectList.isEmpty) {
-          print('No projects found in /projects collection for user: ${currentUserId.value}');
-          Utils.snackBar('Info', 'No projects available. Create a new project to get started.');
+          print('No projects found for user: ${currentUserId.value}');
+          Utils.snackBar('Info', 'No projects available.');
         } else {
-          print('Loaded ${projectList.length} projects for user: ${currentUserId.value}');
+          print('Loaded ${projectList.length} projects');
         }
       },
       onError: (error) {
@@ -80,6 +79,26 @@ class HomeViewModel extends GetxController {
         Utils.snackBar('Error', 'Failed to load projects: $error');
       },
     );
+  }
+
+  void _startInvitesStream() {
+    if (currentUserId.value.isEmpty) return;
+
+    final currentUserEmail = auth.currentUser?.email ?? '';
+    if (currentUserEmail.isEmpty) return;
+
+    _invitesSubscription = firestore
+        .collection('pending_requests')
+        .doc(currentUserEmail)
+        .collection('requests')
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snapshot) {
+      pendingInvitesCount.value = snapshot.docs.length;
+    }, onError: (error) {
+      print('Invites Stream Error: $error');
+      // Utils.snackBar('Error', 'Failed to load invites: $error');
+    });
   }
 
   Future<void> selectDeadlineDate() async {
@@ -95,22 +114,17 @@ class HomeViewModel extends GetxController {
     );
 
     if (picked != null) {
-      // Format the date into a strict string format (YYYY-MM-DD)
-      // This is the format that DateTime.parse() expects and handles reliably.
       final formattedDate =
           '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
       deadlineController.text = formattedDate;
     }
   }
 
-
-
   void toggleAccess(bool isEdit) {
     if (isEdit) {
-      hasViewAccess.value = true; // Edit implies view
+      hasViewAccess.value = true;
       hasEditAccess.value = true;
     } else {
-      // Toggle to View-Only access
       hasViewAccess.value = true;
       hasEditAccess.value = false;
     }
@@ -128,49 +142,74 @@ class HomeViewModel extends GetxController {
     isSavingProject.value = true;
 
     try {
-      final currentOwnerId = _auth.currentUser?.uid;
-      final currentOwnerName = _auth.currentUser?.displayName ?? 'Project Owner';
-      final currentOwnerEmail = _auth.currentUser?.email ?? 'Unknown';
+      final currentOwnerId = auth.currentUser?.uid;
+      final currentOwnerName = auth.currentUser?.displayName ?? 'Project Owner';
+      final currentOwnerEmail = auth.currentUser?.email ?? 'Unknown';
 
-      // Ensure the project owner is the first collaborator (with edit access)
       final ownerCollaborator = Collaborator(
         uid: currentOwnerId!,
         email: currentOwnerEmail,
         name: currentOwnerName,
-        canEdit: true, // Owner always has edit access
+        canEdit: true,
       );
 
-      print('qweuioppasjklzxcnmwrtypsdfhlxcvbnm');
-
       final Project newProject = Project(
-        id: '', // Firestore will assign this
+        id: '',
         title: titleController.text.trim(),
         clientName: clientController.text.trim(),
         location: locationController.text.trim(),
-        // FIX: Re-enable parsing now that the UI ensures the text is in a valid format (via selectDeadlineDate)
         deadline: DateTime.parse(deadlineController.text.trim()),
-        // deadline: DateTime.now(),
         ownerId: currentOwnerId,
         progress: 0.0,
-        // Combine owner and assigned members
         collaborators: [ownerCollaborator, ...assignedMembers.value],
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
         status: 'In progress',
       );
-      print('qweuioppasjklzxcnmwrtypsdfhlxcvbnm');
 
+      final projectId = await _projectService.createProject(newProject);
 
-      await _projectService.createProject(newProject);
+      for (var member in assignedMembers.value) {
+        await _sendInvite(member.email, projectId);
+      }
 
-      // Clear the form after successful creation
       _clearProjectForm();
     } catch (e) {
-      print(e.toString());
-
-      // Error handled and snackbar displayed in the service layer
+      print('Error creating project: $e');
+      Utils.snackBar('Error', 'Failed to create project: $e');
     } finally {
       isSavingProject.value = false;
+    }
+  }
+
+  Future<void> _sendInvite(String email, String projectId) async {
+    try {
+      // Check if the email exists in users (to ensure it's a registered user)
+      final userQuery = await firestore
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      if (userQuery.docs.isEmpty) {
+        Utils.snackBar('Error', 'Not an authorized user: $email');
+        return;
+      }
+
+      final parentDocRef = firestore.collection('pending_requests').doc(email);
+      await parentDocRef.set({'createdAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+
+      final inviteRef = parentDocRef.collection('requests').doc();
+      await inviteRef.set({
+        'projectId': projectId,
+        'invitedBy': auth.currentUser!.uid,
+        'invitedEmail': email,
+        'invitedAt': FieldValue.serverTimestamp(),
+        'status': 'pending',
+      });
+
+    } catch (e) {
+      print('Error sending invite: $e');
+      Utils.snackBar('Error', 'Failed to send invite: $e');
     }
   }
 
@@ -184,9 +223,6 @@ class HomeViewModel extends GetxController {
     hasEditAccess.value = false;
   }
 
-
-  // --- Member Invitation Logic (Mock for now, requires deeper integration) ---
-
   Future<void> sendMemberInvite() async {
     final name = memberNameController.text.trim();
     final email = memberEmailController.text.trim();
@@ -198,37 +234,105 @@ class HomeViewModel extends GetxController {
 
     isInvitingMember.value = true;
 
-    // --- MOCK INVITATION LOGIC (Replace with real system) ---
-
     try {
+      final userQuery = await firestore
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (userQuery.docs.isEmpty) {
+        Utils.snackBar('Error', 'Not an authorized user.');
+        return;
+      }
+
+      final userDoc = userQuery.docs.first;
+      final userData = userDoc.data();
+      final userId = userDoc.id;
+      final userName = userData['displayName'] ?? name;
+      final userPhotoUrl = userData['photoUrl'] ?? '';
+
+      if (assignedMembers.any((member) => member.email == email)) {
+        Utils.snackBar('Info', '$userName is already invited.');
+        return;
+      }
+
       final newMember = Collaborator(
-        uid: email,
+        uid: userId,
         email: email,
-        name: name,
+        name: userName,
         canEdit: hasEditAccess.value,
-        photoUrl: 'https://placehold.co/100x100/A0A0A0/FFFFFF?text=${name.substring(0, 1)}',
+        photoUrl: userPhotoUrl,
       );
 
-      // 3. Add to the list of members waiting to be assigned to the project
       assignedMembers.add(newMember);
-
-      // 4. Close the invite sheet
       Get.back();
       memberNameController.clear();
       memberEmailController.clear();
-      Utils.snackBar('Success', '$name added to assign list.');
-
+      Utils.snackBar('Success', '$userName added to assign list.');
     } catch (e) {
-      Utils.snackBar('Error', 'Failed to process invite: ${e.toString()}');
+      print('Error inviting member: $e');
+      Utils.snackBar('Error', 'Failed to invite member: $e');
     } finally {
       isInvitingMember.value = false;
     }
   }
 
+  Future<void> acceptInvite(String inviteId, String projectId) async {
+    try {
+      final user = auth.currentUser!;
+      final currentUserEmail = user.email ?? '';
+      final collaborator = {
+        'uid': user.uid,
+        'email': user.email,
+        'name': user.displayName ?? user.email!.split('@')[0],
+        'canEdit': false,
+        'photoUrl': user.photoURL ?? '',
+      };
+
+      // Update invite status in the new structure
+      await firestore
+          .collection('pending_requests')
+          .doc(currentUserEmail)
+          .collection('requests')
+          .doc(inviteId)
+          .update({'status': 'accepted'});
+
+      // Add user to project collaborators
+      await firestore
+          .collection('projects')
+          .doc(projectId)
+          .update({
+        'collaborators': FieldValue.arrayUnion([collaborator]),
+      });
+
+      Utils.snackBar('Success', 'You have joined the project!');
+    } catch (e) {
+      print('Error accepting invite: $e');
+      Utils.snackBar('Error', 'Failed to accept invite: $e');
+    }
+  }
+
+  Future<void> declineInvite(String inviteId) async {
+    try {
+      final currentUserEmail = auth.currentUser?.email ?? '';
+      await firestore
+          .collection('pending_requests')
+          .doc(currentUserEmail)
+          .collection('requests')
+          .doc(inviteId)
+          .update({'status': 'rejected'});
+      Utils.snackBar('Info', 'Invite declined.');
+    } catch (e) {
+      print('Error declining invite: $e');
+      Utils.snackBar('Error', 'Failed to decline invite: $e');
+    }
+  }
 
   @override
   void onClose() {
-    // _projectSubscription.cancelIfNotNull();
+    _projectSubscription.cancel();
+    _invitesSubscription.cancel();
     titleController.dispose();
     clientController.dispose();
     locationController.dispose();

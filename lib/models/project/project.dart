@@ -91,4 +91,18 @@ class Project {
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
+
+  factory Project.fromJson(Map<String, dynamic> json) => Project(
+    id: json['id'] ?? '',
+    title: json['title'] ?? '',
+    clientName: json['clientName'] ?? '',
+    location: json['location'] ?? '',
+    deadline: (json['deadline'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    ownerId: json['ownerId'] ?? '',
+    progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
+    collaborators: (json['collaborators'] as List<dynamic>?)?.map((c) => Collaborator.fromJson(c as Map<String, dynamic>)).toList() ?? [],
+    createdAt: (json['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    updatedAt: (json['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    status: json['status'] ?? 'In progress',
+  );
 }

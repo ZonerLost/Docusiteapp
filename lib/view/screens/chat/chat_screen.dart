@@ -41,61 +41,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? _replyingTo;
   bool _isTyping = false;
   bool _isLoading = true;
-  bool _error = false;
   bool _groupChatExists = false;
 
   @override
   void initState() {
     super.initState();
     _checkGroupChat();
-    _initializeChat();
-  }
-
-  Future<void> _initializeChat() async {
-    try {
-      final exists = await _chatServices.groupChatExists(widget.projectId);
-
-      if (exists) {
-        setState(() {
-          _groupChatExists = true;
-          _messagesStream = _chatServices.getMessages(widget.projectId);
-          _isLoading = false;
-        });
-      } else {
-        await _createGroupChat();
-      }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _error = true;
-        Utils.snackBar('Error', 'Failed to initialize chat: $e');
-      });
-    }
-  }
-
-  Future<void> _createGroupChat() async {
-    setState(() {
-      _isLoading = true;
-      _error = false;
-    });
-    try {
-      await _chatServices.initializeGroupChat(
-        widget.projectId,
-        widget.collaboratorIds,
-        widget.collaboratorEmails,
-      );
-      setState(() {
-        _groupChatExists = true;
-        _messagesStream = _chatServices.getMessages(widget.projectId);
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _error = true;
-        Utils.snackBar('Error', 'Failed to create group chat: $e');
-      });
-    }
   }
 
   Future<void> _checkGroupChat() async {
@@ -111,8 +62,31 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _error = true;
-        Utils.snackBar('Error', 'Failed to check group chat: $e');
+        _groupChatExists = false; // Treat error as no group chat
+      });
+    }
+  }
+
+  Future<void> _createGroupChat() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      await _chatServices.initializeGroupChat(
+        widget.projectId,
+        widget.collaboratorIds,
+        widget.collaboratorEmails,
+      );
+      setState(() {
+        _groupChatExists = true;
+        _messagesStream = _chatServices.getMessages(widget.projectId);
+        _isLoading = false;
+      });
+    } catch (e) {
+      Utils.snackBar('Error', 'Failed to create group chat: $e');
+      print(e.toString());
+      setState(() {
+        _isLoading = false;
       });
     }
   }
@@ -357,22 +331,6 @@ class _ChatScreenState extends State<ChatScreen> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    if (_error) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Failed to load group chat.'),
-              ElevatedButton(
-                onPressed: _checkGroupChat,
-                child: Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
     if (!_groupChatExists) {
       return Scaffold(
         appBar: simpleAppBar(title: 'Back'),
@@ -397,7 +355,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
                 child: Text(
-                  'Create Group Chat',
+                  'Start Group Chat',
                   style: TextStyle(
                     color: kFillColor,
                     fontSize: 14,
@@ -417,6 +375,26 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(child: buildGroupedChatList()),
+          if (_replyingTo != null)
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: kFillColor,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Replying to ${_replyingTo!['sender']}: ${_replyingTo!['message']}',
+                      style: TextStyle(color: kQuaternaryColor, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() => _replyingTo = null),
+                    child: Icon(Icons.close, color: kQuaternaryColor, size: 20),
+                  ),
+                ],
+              ),
+            ),
           Container(
             padding: AppSizes.DEFAULT,
             decoration: BoxDecoration(
@@ -683,7 +661,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         Image.asset(
                           Assets.imagesDoubleTick,
                           height: 16,
-                          color: (data['status'] == 'read' && (data['readBy'] as List<dynamic>).length == widget.collaboratorIds.length + 1)
+                          color: (data['status'] == 'read' &&
+                              (data['readBy'] as List<dynamic>).length == widget.collaboratorIds.length + 1)
                               ? kSecondaryColor
                               : kQuaternaryColor,
                         ),
@@ -705,11 +684,10 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
 
-        // Use reverse: true to show newest messages at the bottom
         return ListView(
           controller: _scrollController,
           shrinkWrap: true,
-          reverse: true, // Reverse the ListView to show newest messages at the bottom
+          reverse: true,
           physics: BouncingScrollPhysics(),
           padding: AppSizes.DEFAULT,
           children: [

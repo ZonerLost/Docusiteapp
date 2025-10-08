@@ -4,10 +4,9 @@ class Collaborator {
   final String uid;
   final String email;
   final String name;
-  final bool canEdit; // true for Edit Access, false for View Access
+  final bool canEdit; // true = Edit Access, false = View Access
   final String photoUrl;
-  final String role; // e.g., 'Contractor', 'Client', 'Project Owner'
-
+  final String role; // e.g. 'Contractor', 'Client', 'Project Owner'
 
   Collaborator({
     required this.uid,
@@ -15,10 +14,10 @@ class Collaborator {
     required this.name,
     required this.canEdit,
     this.photoUrl = '',
-    this.role='',
+    this.role = '',
   });
 
-  // Factory constructor for creating a Collaborator from a Firestore map
+  /// Factory constructor to create from a Map (e.g. Firestore data)
   factory Collaborator.fromMap(Map<String, dynamic> map) {
     return Collaborator(
       uid: map['uid'] ?? '',
@@ -26,12 +25,29 @@ class Collaborator {
       name: map['name'] ?? '',
       canEdit: map['canEdit'] ?? false,
       photoUrl: map['photoUrl'] ?? '',
-      role: map['role'] as String,
-
+      role: map['role'] ?? '',
     );
   }
 
-  // Convert Collaborator to a map for Firestore storage
+  /// Factory constructor to create from JSON (e.g. REST API or local storage)
+  factory Collaborator.fromJson(Map<String, dynamic> json) {
+    return Collaborator(
+      uid: json['uid'] ?? '',
+      email: json['email'] ?? '',
+      name: json['name'] ?? '',
+      canEdit: json['canEdit'] ?? false,
+      photoUrl: json['photoUrl'] ?? '',
+      role: json['role'] ?? '',
+    );
+  }
+
+  /// Factory to create from Firestore DocumentSnapshot
+  factory Collaborator.fromDocument(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return Collaborator.fromMap(data);
+  }
+
+  /// Convert to Map for Firestore
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
@@ -42,4 +58,7 @@ class Collaborator {
       'role': role,
     };
   }
+
+  /// Convert to JSON for local storage or APIs
+  Map<String, dynamic> toJson() => toMap();
 }

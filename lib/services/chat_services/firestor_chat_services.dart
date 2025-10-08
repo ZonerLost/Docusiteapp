@@ -126,9 +126,9 @@ class FirestoreChatServices {
             .limit(1)
             .get();
         if (userDoc.docs.isNotEmpty) {
-          await _firestore.collection('users').doc(userDoc.docs.first.id).update({
-            'groupChats.$projectId': projectId,
-          });
+          // await _firestore.collection('users').doc(userDoc.docs.first.id).update({
+          //   'groupChats.$projectId': projectId,
+          // });
         }
       }
     }
