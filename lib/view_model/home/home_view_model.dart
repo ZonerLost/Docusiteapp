@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:get/Get.dart';
+import 'package:get/get.dart';
 import '../../models/project/collaborator.dart';
 import '../../models/project/project.dart';
 import '../../../utils/Utils.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-import '../../services/project_services/firestore_project_services.dart'; // Needed for type hints
+import '../../services/project_services/firestore_project_services.dart';
 
 class HomeViewModel extends GetxController {
   final ProjectService _projectService = Get.find<ProjectService>();
@@ -17,20 +16,26 @@ class HomeViewModel extends GetxController {
   RxList<Project> projects = <Project>[].obs;
   RxBool isLoadingProjects = true.obs;
   RxString currentUserId = ''.obs;
-  RxInt pendingInvitesCount = 0.obs; // Track number of pending invites
+  RxInt pendingInvitesCount = 0.obs;
+
   late StreamSubscription<List<Project>> _projectSubscription;
   late StreamSubscription<QuerySnapshot> _invitesSubscription;
+
   final titleController = TextEditingController();
   final clientController = TextEditingController();
   final locationController = TextEditingController();
   final deadlineController = TextEditingController();
   RxList<Collaborator> assignedMembers = <Collaborator>[].obs;
   RxBool isSavingProject = false.obs;
+
   RxBool hasViewAccess = true.obs;
   RxBool hasEditAccess = false.obs;
+
   final memberNameController = TextEditingController();
   final memberEmailController = TextEditingController();
   RxBool isInvitingMember = false.obs;
+
+  RxString selectedMemberRole = Project.roleOptions.first.obs;
 
   @override
   void onInit() {
@@ -97,7 +102,6 @@ class HomeViewModel extends GetxController {
       pendingInvitesCount.value = snapshot.docs.length;
     }, onError: (error) {
       print('Invites Stream Error: $error');
-      // Utils.snackBar('Error', 'Failed to load invites: $error');
     });
   }
 
@@ -151,6 +155,8 @@ class HomeViewModel extends GetxController {
         email: currentOwnerEmail,
         name: currentOwnerName,
         canEdit: true,
+        photoUrl: '',
+        role: 'Project Owner',
       );
 
       final Project newProject = Project(
@@ -184,7 +190,6 @@ class HomeViewModel extends GetxController {
 
   Future<void> _sendInvite(String email, String projectId) async {
     try {
-      // Check if the email exists in users (to ensure it's a registered user)
       final userQuery = await firestore
           .collection('users')
           .where('email', isEqualTo: email)
@@ -226,6 +231,7 @@ class HomeViewModel extends GetxController {
   Future<void> sendMemberInvite() async {
     final name = memberNameController.text.trim();
     final email = memberEmailController.text.trim();
+    final role = selectedMemberRole.value;
 
     if (name.isEmpty || email.isEmpty || !GetUtils.isEmail(email)) {
       Utils.snackBar('Validation', 'Please enter a valid name and email address.');
@@ -263,13 +269,15 @@ class HomeViewModel extends GetxController {
         name: userName,
         canEdit: hasEditAccess.value,
         photoUrl: userPhotoUrl,
+        role: role,
       );
 
       assignedMembers.add(newMember);
       Get.back();
       memberNameController.clear();
       memberEmailController.clear();
-      Utils.snackBar('Success', '$userName added to assign list.');
+      selectedMemberRole.value = Project.roleOptions.first;
+      Utils.snackBar('Success', '$userName added with role $role.');
     } catch (e) {
       print('Error inviting member: $e');
       Utils.snackBar('Error', 'Failed to invite member: $e');
@@ -288,9 +296,9 @@ class HomeViewModel extends GetxController {
         'name': user.displayName ?? user.email!.split('@')[0],
         'canEdit': false,
         'photoUrl': user.photoURL ?? '',
+        'role': 'Member',
       };
 
-      // Update invite status in the new structure
       await firestore
           .collection('pending_requests')
           .doc(currentUserEmail)
@@ -298,11 +306,7 @@ class HomeViewModel extends GetxController {
           .doc(inviteId)
           .update({'status': 'accepted'});
 
-      // Add user to project collaborators
-      await firestore
-          .collection('projects')
-          .doc(projectId)
-          .update({
+      await firestore.collection('projects').doc(projectId).update({
         'collaborators': FieldValue.arrayUnion([collaborator]),
       });
 

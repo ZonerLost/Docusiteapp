@@ -22,6 +22,7 @@ import 'package:percent_indicator/linear_percent_indicator.dart';
 
 import '../../../models/project/project.dart';
 import '../../../view_model/home/home_view_model.dart';
+import '../../widget/invite_member_dialog.dart';
 
 class Home extends StatelessWidget {
   const Home({super.key});
@@ -672,7 +673,7 @@ class _AddNewProject extends StatelessWidget {
                           viewModel.memberNameController.clear();
                           viewModel.memberEmailController.clear();
                           Get.bottomSheet(
-                            _InviteNewMember(),
+                            InviteNewMember(),
                             isScrollControlled: true,
                           );
                         },
@@ -749,72 +750,3 @@ class _AddNewProject extends StatelessWidget {
   }
 }
 
-class _InviteNewMember extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final HomeViewModel viewModel = Get.find();
-
-    return Container(
-      height: Get.height * 0.5,
-      margin: const EdgeInsets.only(top: 55),
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: kPrimaryColor,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(12),
-          topRight: Radius.circular(12),
-        ),
-      ),
-      child: Obx(
-            () => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            MyText(
-              text: 'Invite new member',
-              size: 18,
-              weight: FontWeight.w500,
-              paddingBottom: 8,
-            ),
-            MyText(
-              text: 'Please enter the correct information to add a new member.',
-              color: kQuaternaryColor,
-              weight: FontWeight.w500,
-              size: 13,
-            ),
-            Container(
-              height: 1,
-              color: kBorderColor,
-              margin: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            Expanded(
-              child: ListView(
-                shrinkWrap: true,
-                padding: AppSizes.ZERO,
-                physics: const BouncingScrollPhysics(),
-                children: [
-                  SimpleTextField(
-                    controller: viewModel.memberNameController,
-                    labelText: 'Member Name',
-                    hintText: 'Chris Taylor',
-                  ),
-                  SimpleTextField(
-                    controller: viewModel.memberEmailController,
-                    labelText: 'Member email address',
-                    hintText: 'chris345@gmail.com',
-                  ),
-                ],
-              ),
-            ),
-            MyButton(
-              buttonText: 'Send Invite ',
-              isLoading: viewModel.isInvitingMember.value,
-              onTap: viewModel.isInvitingMember.value
-                  ? null
-                  : viewModel.sendMemberInvite,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

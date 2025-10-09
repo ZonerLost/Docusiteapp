@@ -1,3 +1,4 @@
+import 'package:docu_site/controllers/project/project_detail_controller.dart';
 import 'package:docu_site/services/project_services/firestore_project_services.dart';
 import 'package:docu_site/view/screens/profile/profile.dart';
 import 'package:docu_site/view_model/edit_profile/edit_profile_controller.dart';
@@ -20,7 +21,6 @@ void main()async {
 
   Get.put(ProjectService());
   Get.put(EditProfileController());
-
   runApp(MyApp());
 }
 

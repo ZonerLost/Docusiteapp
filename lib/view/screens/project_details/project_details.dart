@@ -4,7 +4,7 @@ import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_fonts.dart';
 import 'package:docu_site/constants/app_images.dart';
 import 'package:docu_site/constants/app_sizes.dart';
-import 'package:docu_site/main.dart'; // Assuming this imports dummyImg
+import 'package:docu_site/main.dart';
 import 'package:docu_site/view/screens/chat/chat_screen.dart';
 import 'package:docu_site/view/screens/project_details/pdf_details.dart';
 import 'package:docu_site/view/widget/common_image_view_widget.dart';
@@ -16,15 +16,13 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:docu_site/utils/Utils.dart';
 import '../../../controllers/project/project_detail_controller.dart';
 import '../../../models/project/collaborator.dart';
 import '../../../models/project/project.dart';
 import '../../../models/project/project_file.dart';
-import '../../../services/project_services/firestore_project_services.dart';
+import '../../../view_model/home/home_view_model.dart';
+import '../../widget/invite_member_dialog.dart';
 
 class ProjectDetails extends StatelessWidget {
   final String projectId;
@@ -32,9 +30,12 @@ class ProjectDetails extends StatelessWidget {
 
   ProjectDetails({super.key, required this.projectId}) {
     Get.put(ProjectDetailsController(projectId: projectId), tag: tag);
+    // Ensure HomeViewModel is initialized for member invitation
+    Get.put(HomeViewModel());
   }
 
   ProjectDetailsController get controller => Get.find<ProjectDetailsController>(tag: tag);
+  HomeViewModel get homeViewModel => Get.find<HomeViewModel>();
 
   @override
   Widget build(BuildContext context) {
@@ -95,8 +96,10 @@ class ProjectDetails extends StatelessWidget {
                               value: 'invite',
                               height: 25,
                               onTap: () {
+                                homeViewModel.memberNameController.clear();
+                                homeViewModel.memberEmailController.clear();
                                 Get.bottomSheet(
-                                  _AddMember(controller: controller),
+                                  InviteNewMember(),
                                   isScrollControlled: true,
                                 );
                               },
@@ -528,6 +531,7 @@ class _Members extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       final List<Collaborator> members = controller.project.value?.collaborators ?? [];
+      final homeViewModel = Get.find<HomeViewModel>();
 
       return ListView(
         physics: BouncingScrollPhysics(),
@@ -536,9 +540,14 @@ class _Members extends StatelessWidget {
         children: [
           MyText(
             onTap: () {
-              Get.bottomSheet(_AddMember(controller: controller), isScrollControlled: true);
+              homeViewModel.memberNameController.clear();
+              homeViewModel.memberEmailController.clear();
+              Get.bottomSheet(
+                InviteNewMember(),
+                isScrollControlled: true,
+              );
             },
-            text: '+ Add new member',
+            text: '+ Invite new member',
             size: 16,
             weight: FontWeight.w500,
             color: kSecondaryColor,
@@ -616,21 +625,26 @@ class _Members extends StatelessWidget {
                         ),
                       ),
                       if (!isOwner)
-                        Container(
-                          padding: EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: kRedColor.withOpacity(.08),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              width: 1.0,
+                        GestureDetector(
+                          onTap: () {
+                            // controller.removeMember(member.uid);
+                          },
+                          child: Container(
+                            padding: EdgeInsets.all(8),
+                            decoration: BoxDecoration(
                               color: kRedColor.withOpacity(.08),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                width: 1.0,
+                                color: kRedColor.withOpacity(.08),
+                              ),
                             ),
-                          ),
-                          child: MyText(
-                            text: 'Remove',
-                            size: 12,
-                            color: kRedColor,
-                            weight: FontWeight.w500,
+                            child: MyText(
+                              text: 'Remove',
+                              size: 12,
+                              color: kRedColor,
+                              weight: FontWeight.w500,
+                            ),
                           ),
                         ),
                     ],
@@ -642,99 +656,6 @@ class _Members extends StatelessWidget {
         ],
       );
     });
-  }
-}
-
-class _AddMember extends StatelessWidget {
-  final ProjectDetailsController controller;
-
-  _AddMember({required this.controller});
-
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController emailController = TextEditingController();
-  final RxString selectedRole = Project.roleOptions.first.obs;
-
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: Get.height * 0.55,
-      margin: EdgeInsets.only(top: 55),
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: kPrimaryColor,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(12),
-          topRight: Radius.circular(12),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          MyText(
-            text: 'Add new member',
-            size: 18,
-            weight: FontWeight.w500,
-            paddingBottom: 8,
-          ),
-          MyText(
-            text: 'Please enter the correct information to add a new member.',
-            color: kQuaternaryColor,
-            weight: FontWeight.w500,
-            size: 13,
-          ),
-          Container(
-            height: 1,
-            color: kBorderColor,
-            margin: EdgeInsets.symmetric(vertical: 12),
-          ),
-          Expanded(
-            child: ListView(
-              shrinkWrap: true,
-              padding: AppSizes.ZERO,
-              physics: BouncingScrollPhysics(),
-              children: [
-                SimpleTextField(
-                  labelText: 'Member Name',
-                  hintText: 'Chris Taylor',
-                  controller: nameController,
-                ),
-                SimpleTextField(
-                  labelText: 'Email Address',
-                  hintText: 'chris.taylor@email.com',
-                  controller: emailController,
-                ),
-                Obx(() => CustomDropDown(
-                  labelText: 'Member role',
-                  hintText: 'Select Role',
-                  items: Project.roleOptions,
-                  selectedValue: selectedRole.value,
-                  onChanged: (v) {
-                    selectedRole.value = v;
-                  },
-                )),
-              ],
-            ),
-          ),
-          MyButton(
-            buttonText: 'Add',
-            isLoading: controller.isAddingMember.value,
-            onTap: () {
-              if (nameController.text.isNotEmpty && emailController.text.isNotEmpty && GetUtils.isEmail(emailController.text)) {
-                controller.addMember(
-                  nameController.text.trim(),
-                  emailController.text.trim(),
-                  selectedRole.value,
-                );
-                Get.back();
-              } else {
-                Utils.snackBar('Validation', 'Please enter a valid name and email address.');
-              }
-            },
-          ),
-        ],
-      ),
-    );
   }
 }
 
