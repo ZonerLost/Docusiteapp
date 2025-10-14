@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../models/project/collaborator.dart';
 import '../../models/project/project.dart';
 import '../../../utils/Utils.dart';
@@ -12,6 +14,7 @@ class HomeViewModel extends GetxController {
   final ProjectService _projectService = Get.find<ProjectService>();
   final FirebaseAuth auth = FirebaseAuth.instance;
   final FirebaseFirestore firestore = FirebaseFirestore.instance;
+  final FirebaseMessaging messaging = FirebaseMessaging.instance;
 
   RxList<Project> projects = <Project>[].obs;
   RxBool isLoadingProjects = true.obs;
@@ -34,22 +37,32 @@ class HomeViewModel extends GetxController {
   final memberNameController = TextEditingController();
   final memberEmailController = TextEditingController();
   RxBool isInvitingMember = false.obs;
-
   RxString selectedMemberRole = Project.roleOptions.first.obs;
 
   @override
   void onInit() {
-    _initAuthState();
     super.onInit();
+    log('[HomeViewModel] onInit: Initializing ViewModel.');
+    _initAuthState();
+    messaging.onTokenRefresh.listen((token) {
+      log('[HomeViewModel] onTokenRefresh: FCM token has been refreshed.');
+      _saveFcmToken(token);
+    });
   }
 
   void _initAuthState() {
-    auth.authStateChanges().listen((User? user) {
+    log('[HomeViewModel] _initAuthState: Setting up auth state listener.');
+    auth.authStateChanges().listen((User? user) async {
       if (user != null) {
+        log('[HomeViewModel] AuthStateChange: User is signed in. UID: ${user.uid}');
         currentUserId.value = user.uid;
+        await _requestNotificationPermission();
+        String? token = await messaging.getToken();
+        await _saveFcmToken(token);
         _startProjectStream();
         _startInvitesStream();
       } else {
+        log('[HomeViewModel] AuthStateChange: User is signed out.');
         currentUserId.value = '';
         projects.clear();
         pendingInvitesCount.value = 0;
@@ -58,40 +71,90 @@ class HomeViewModel extends GetxController {
     });
   }
 
+  Future<void> _requestNotificationPermission() async {
+    log('[HomeViewModel] _requestNotificationPermission: Requesting notification permissions.');
+    try {
+      NotificationSettings settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+        log('[HomeViewModel] _requestNotificationPermission: User granted notification permission.');
+      } else {
+        log('[HomeViewModel] _requestNotificationPermission: Notification permission denied.');
+      }
+    } catch (e) {
+      log('[HomeViewModel] _requestNotificationPermission: Error requesting permission: $e');
+    }
+  }
+
+  Future<void> _saveFcmToken(String? token) async {
+    log('[HomeViewModel] _saveFcmToken: Attempting to save FCM token.');
+    if (token != null && currentUserId.value.isNotEmpty) {
+      try {
+        log('[HomeViewModel] _saveFcmToken: Saving token for user: ${currentUserId.value}');
+        await firestore.collection('users').doc(currentUserId.value).set(
+          {'fcmToken': token},
+          SetOptions(merge: true),
+        );
+        log('[HomeViewModel] _saveFcmToken: FCM token saved successfully.');
+      } catch (e) {
+        log('[HomeViewModel] _saveFcmToken: Error saving FCM token: $e');
+      }
+    } else {
+      log('[HomeViewModel] _saveFcmToken: Skipped saving token. Token is null or user is not logged in.');
+    }
+  }
+
   void _startProjectStream() {
+    log('[HomeViewModel] _startProjectStream: Attempting to start project stream.');
     if (currentUserId.value.isEmpty) {
       projects.clear();
       isLoadingProjects.value = false;
-      Utils.snackBar('Info', 'Please log in to view projects.');
+      String snackbarMessage = 'Please log in to view projects.';
+      log('[HomeViewModel] _startProjectStream: User not logged in. SNACKBAR: Info, $snackbarMessage');
+      Utils.snackBar('Info', snackbarMessage);
       return;
     }
 
+    log('[HomeViewModel] _startProjectStream: Subscribing to projects for user ${currentUserId.value}');
     isLoadingProjects.value = true;
     _projectSubscription = _projectService.streamAllProjects().listen(
           (projectList) {
         projects.value = projectList;
         isLoadingProjects.value = false;
         if (projectList.isEmpty) {
-          print('No projects found for user: ${currentUserId.value}');
-          Utils.snackBar('Info', 'No projects available.');
+          String snackbarMessage = 'No projects available.';
+          log('[HomeViewModel] ProjectStream: Received 0 projects for user: ${currentUserId.value}. SNACKBAR: Info, $snackbarMessage');
+          Utils.snackBar('Info', snackbarMessage);
         } else {
-          print('Loaded ${projectList.length} projects');
+          log('[HomeViewModel] ProjectStream: Successfully loaded ${projectList.length} projects.');
         }
       },
       onError: (error) {
         isLoadingProjects.value = false;
-        print('Firestore Stream Error: $error');
-        Utils.snackBar('Error', 'Failed to load projects: $error');
+        String snackbarMessage = 'Failed to load projects: $error';
+        log('[HomeViewModel] ProjectStream: ERROR - $error. SNACKBAR: Error, $snackbarMessage');
+        Utils.snackBar('Error', snackbarMessage);
       },
     );
   }
 
   void _startInvitesStream() {
-    if (currentUserId.value.isEmpty) return;
+    log('[HomeViewModel] _startInvitesStream: Attempting to start invites stream.');
+    if (currentUserId.value.isEmpty) {
+      log('[HomeViewModel] _startInvitesStream: Aborted, no current user.');
+      return;
+    }
 
     final currentUserEmail = auth.currentUser?.email ?? '';
-    if (currentUserEmail.isEmpty) return;
+    if (currentUserEmail.isEmpty) {
+      log('[HomeViewModel] _startInvitesStream: Aborted, user has no email.');
+      return;
+    }
 
+    log('[HomeViewModel] _startInvitesStream: Subscribing to invites for email: $currentUserEmail');
     _invitesSubscription = firestore
         .collection('pending_requests')
         .doc(currentUserEmail)
@@ -100,14 +163,19 @@ class HomeViewModel extends GetxController {
         .snapshots()
         .listen((snapshot) {
       pendingInvitesCount.value = snapshot.docs.length;
+      log('[HomeViewModel] InvitesStream: Found ${snapshot.docs.length} pending invites.');
     }, onError: (error) {
-      print('Invites Stream Error: $error');
+      log('[HomeViewModel] InvitesStream: ERROR - $error');
     });
   }
 
   Future<void> selectDeadlineDate() async {
+    log('[HomeViewModel] selectDeadlineDate: Opening date picker.');
     final context = Get.context;
-    if (context == null) return;
+    if (context == null) {
+      log('[HomeViewModel] selectDeadlineDate: Aborted, Get.context is null.');
+      return;
+    }
 
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -118,9 +186,11 @@ class HomeViewModel extends GetxController {
     );
 
     if (picked != null) {
-      final formattedDate =
-          '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+      final formattedDate = '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
       deadlineController.text = formattedDate;
+      log('[HomeViewModel] selectDeadlineDate: Date picked and formatted: $formattedDate');
+    } else {
+      log('[HomeViewModel] selectDeadlineDate: Date picker was cancelled.');
     }
   }
 
@@ -132,23 +202,42 @@ class HomeViewModel extends GetxController {
       hasViewAccess.value = true;
       hasEditAccess.value = false;
     }
+    log('[HomeViewModel] toggleAccess: Toggled access. CanEdit is now ${hasEditAccess.value}');
   }
 
+  void _clearProjectForm() {
+    titleController.clear();
+    clientController.clear();
+    locationController.clear();
+    deadlineController.clear();
+    assignedMembers.clear();
+    hasViewAccess.value = true;
+    hasEditAccess.value = false;
+    log('[HomeViewModel] _clearProjectForm: Project creation form has been cleared.');
+  }
+
+
+  // --- CORE LOGIC - PROJECT & MEMBER MANAGEMENT ---
   Future<void> createNewProject() async {
+    log('[HomeViewModel] createNewProject: Attempting to create new project.');
     if (titleController.text.isEmpty ||
         clientController.text.isEmpty ||
         locationController.text.isEmpty ||
         deadlineController.text.isEmpty) {
-      Utils.snackBar('Missing Info', 'Please fill in all project details.');
+      String snackbarMessage = 'Please fill in all project details.';
+      log('[HomeViewModel] createNewProject: Validation failed. SNACKBAR: Missing Info, $snackbarMessage');
+      Utils.snackBar('Missing Info', snackbarMessage);
       return;
     }
 
     isSavingProject.value = true;
+    log('[HomeViewModel] createNewProject: isSavingProject set to true.');
 
     try {
       final currentOwnerId = auth.currentUser?.uid;
       final currentOwnerName = auth.currentUser?.displayName ?? 'Project Owner';
       final currentOwnerEmail = auth.currentUser?.email ?? 'Unknown';
+      log('[HomeViewModel] createNewProject: Owner details - ID: $currentOwnerId, Name: $currentOwnerName, Email: $currentOwnerEmail');
 
       final ownerCollaborator = Collaborator(
         uid: currentOwnerId!,
@@ -173,22 +262,28 @@ class HomeViewModel extends GetxController {
         status: 'In progress',
       );
 
+      log('[HomeViewModel] createNewProject: Creating project object: ${newProject.title}');
       final projectId = await _projectService.createProject(newProject);
+      log('[HomeViewModel] createNewProject: Project created with ID: $projectId');
 
+      log('[HomeViewModel] createNewProject: Sending invites to ${assignedMembers.length} members.');
       for (var member in assignedMembers.value) {
         await _sendInvite(member.email, projectId);
       }
 
       _clearProjectForm();
     } catch (e) {
-      print('Error creating project: $e');
-      Utils.snackBar('Error', 'Failed to create project: $e');
+      String snackbarMessage = 'Failed to create project: $e';
+      log('[HomeViewModel] createNewProject: ERROR - $e. SNACKBAR: Error, $snackbarMessage');
+      Utils.snackBar('Error', snackbarMessage);
     } finally {
       isSavingProject.value = false;
+      log('[HomeViewModel] createNewProject: isSavingProject set to false.');
     }
   }
 
   Future<void> _sendInvite(String email, String projectId) async {
+    log('[HomeViewModel] _sendInvite: Attempting to send invite to $email for project $projectId.');
     try {
       final userQuery = await firestore
           .collection('users')
@@ -196,9 +291,12 @@ class HomeViewModel extends GetxController {
           .limit(1)
           .get();
       if (userQuery.docs.isEmpty) {
-        Utils.snackBar('Error', 'Not an authorized user: $email');
+        String snackbarMessage = 'Not an authorized user: $email';
+        log('[HomeViewModel] _sendInvite: User not found in "users" collection. SNACKBAR: Error, $snackbarMessage');
+        Utils.snackBar('Error', snackbarMessage);
         return;
       }
+      log('[HomeViewModel] _sendInvite: User found. Proceeding to create invite document.');
 
       final parentDocRef = firestore.collection('pending_requests').doc(email);
       await parentDocRef.set({'createdAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
@@ -211,34 +309,29 @@ class HomeViewModel extends GetxController {
         'invitedAt': FieldValue.serverTimestamp(),
         'status': 'pending',
       });
-
+      log('[HomeViewModel] _sendInvite: Invite sent successfully to $email.');
     } catch (e) {
-      print('Error sending invite: $e');
-      Utils.snackBar('Error', 'Failed to send invite: $e');
+      String snackbarMessage = 'Failed to send invite: $e';
+      log('[HomeViewModel] _sendInvite: ERROR - $e. SNACKBAR: Error, $snackbarMessage');
+      Utils.snackBar('Error', snackbarMessage);
     }
-  }
-
-  void _clearProjectForm() {
-    titleController.clear();
-    clientController.clear();
-    locationController.clear();
-    deadlineController.clear();
-    assignedMembers.clear();
-    hasViewAccess.value = true;
-    hasEditAccess.value = false;
   }
 
   Future<void> sendMemberInvite() async {
     final name = memberNameController.text.trim();
     final email = memberEmailController.text.trim();
     final role = selectedMemberRole.value;
+    log('[HomeViewModel] sendMemberInvite: Attempting to add member: Name: $name, Email: $email, Role: $role');
 
     if (name.isEmpty || email.isEmpty || !GetUtils.isEmail(email)) {
-      Utils.snackBar('Validation', 'Please enter a valid name and email address.');
+      String snackbarMessage = 'Please enter a valid name and email address.';
+      log('[HomeViewModel] sendMemberInvite: Validation failed. SNACKBAR: Validation, $snackbarMessage');
+      Utils.snackBar('Validation', snackbarMessage);
       return;
     }
 
     isInvitingMember.value = true;
+    log('[HomeViewModel] sendMemberInvite: isInvitingMember set to true.');
 
     try {
       final userQuery = await firestore
@@ -248,9 +341,12 @@ class HomeViewModel extends GetxController {
           .get();
 
       if (userQuery.docs.isEmpty) {
-        Utils.snackBar('Error', 'Not an authorized user.');
-        return;
+        String snackbarMessage = 'Not an authorized user.';
+        log('[HomeViewModel] sendMemberInvite: User not found. SNACKBAR: Error, $snackbarMessage');
+        Utils.snackBar('Error', snackbarMessage);
+        return; // Important: return here
       }
+      log('[HomeViewModel] sendMemberInvite: User with email $email found in "users" collection.');
 
       final userDoc = userQuery.docs.first;
       final userData = userDoc.data();
@@ -259,8 +355,10 @@ class HomeViewModel extends GetxController {
       final userPhotoUrl = userData['photoUrl'] ?? '';
 
       if (assignedMembers.any((member) => member.email == email)) {
-        Utils.snackBar('Info', '$userName is already invited.');
-        return;
+        String snackbarMessage = '$userName is already invited.';
+        log('[HomeViewModel] sendMemberInvite: Member already invited. SNACKBAR: Info, $snackbarMessage');
+        Utils.snackBar('Info', snackbarMessage);
+        return; // Important: return here
       }
 
       final newMember = Collaborator(
@@ -277,27 +375,35 @@ class HomeViewModel extends GetxController {
       memberNameController.clear();
       memberEmailController.clear();
       selectedMemberRole.value = Project.roleOptions.first;
-      Utils.snackBar('Success', '$userName added with role $role.');
+      String snackbarMessage = '$userName added with role $role.';
+      log('[HomeViewModel] sendMemberInvite: Member added to local list. SNACKBAR: Success, $snackbarMessage');
+      Utils.snackBar('Success', snackbarMessage);
     } catch (e) {
-      print('Error inviting member: $e');
-      Utils.snackBar('Error', 'Failed to invite member: $e');
+      String snackbarMessage = 'Failed to invite member: $e';
+      log('[HomeViewModel] sendMemberInvite: ERROR - $e. SNACKBAR: Error, $snackbarMessage');
+      Utils.snackBar('Error', snackbarMessage);
     } finally {
       isInvitingMember.value = false;
+      log('[HomeViewModel] sendMemberInvite: isInvitingMember set to false.');
     }
   }
 
   Future<void> acceptInvite(String inviteId, String projectId) async {
+    log('[HomeViewModel] acceptInvite: Attempting to accept invite $inviteId for project $projectId.');
     try {
       final user = auth.currentUser!;
       final currentUserEmail = user.email ?? '';
+      log('[HomeViewModel] acceptInvite: Current user email: $currentUserEmail');
+
       final collaborator = {
         'uid': user.uid,
         'email': user.email,
         'name': user.displayName ?? user.email!.split('@')[0],
-        'canEdit': false,
+        'canEdit': false, // Default access on accepting
         'photoUrl': user.photoURL ?? '',
-        'role': 'Member',
+        'role': 'Member', // Default role on accepting
       };
+      log('[HomeViewModel] acceptInvite: Created collaborator object for user.');
 
       await firestore
           .collection('pending_requests')
@@ -305,36 +411,48 @@ class HomeViewModel extends GetxController {
           .collection('requests')
           .doc(inviteId)
           .update({'status': 'accepted'});
+      log('[HomeViewModel] acceptInvite: Updated invite status to "accepted".');
 
       await firestore.collection('projects').doc(projectId).update({
         'collaborators': FieldValue.arrayUnion([collaborator]),
       });
+      log('[HomeViewModel] acceptInvite: Added user to project collaborators.');
 
-      Utils.snackBar('Success', 'You have joined the project!');
+      String snackbarMessage = 'You have joined the project!';
+      log('[HomeViewModel] acceptInvite: Success. SNACKBAR: Success, $snackbarMessage');
+      Utils.snackBar('Success', snackbarMessage);
     } catch (e) {
-      print('Error accepting invite: $e');
-      Utils.snackBar('Error', 'Failed to accept invite: $e');
+      String snackbarMessage = 'Failed to accept invite: $e';
+      log('[HomeViewModel] acceptInvite: ERROR - $e. SNACKBAR: Error, $snackbarMessage');
+      Utils.snackBar('Error', snackbarMessage);
     }
   }
 
   Future<void> declineInvite(String inviteId) async {
+    log('[HomeViewModel] declineInvite: Attempting to decline invite $inviteId.');
     try {
       final currentUserEmail = auth.currentUser?.email ?? '';
+      log('[HomeViewModel] declineInvite: Current user email: $currentUserEmail');
       await firestore
           .collection('pending_requests')
           .doc(currentUserEmail)
           .collection('requests')
           .doc(inviteId)
           .update({'status': 'rejected'});
-      Utils.snackBar('Info', 'Invite declined.');
+
+      String snackbarMessage = 'Invite declined.';
+      log('[HomeViewModel] declineInvite: Success, invite status set to "rejected". SNACKBAR: Info, $snackbarMessage');
+      Utils.snackBar('Info', snackbarMessage);
     } catch (e) {
-      print('Error declining invite: $e');
-      Utils.snackBar('Error', 'Failed to decline invite: $e');
+      String snackbarMessage = 'Failed to decline invite: $e';
+      log('[HomeViewModel] declineInvite: ERROR - $e. SNACKBAR: Error, $snackbarMessage');
+      Utils.snackBar('Error', snackbarMessage);
     }
   }
 
   @override
   void onClose() {
+    log('[HomeViewModel] onClose: Disposing controllers and cancelling subscriptions.');
     _projectSubscription.cancel();
     _invitesSubscription.cancel();
     titleController.dispose();

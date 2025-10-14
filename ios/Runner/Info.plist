@@ -12,6 +12,8 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>FirebaseMessagingAutoInitEnabled</key>
+    <string>NO</string>
 	<key>CFBundleDisplayName</key>
 	<string>Docu Site</string>
 	<key>CFBundleExecutable</key>

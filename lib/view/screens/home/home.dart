@@ -18,6 +18,7 @@ import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 
 import '../../../models/project/project.dart';
@@ -273,6 +274,11 @@ class _ProjectCard extends StatelessWidget {
   final Project project;
   const _ProjectCard({required this.project});
 
+  // Helper function to format the date
+  String get formattedDeadlineDate {
+    return DateFormat('yyyy-MM-dd').format(project.deadline);
+  }
+
   @override
   Widget build(BuildContext context) {
     final timeDifference = DateTime.now().difference(project.updatedAt);
@@ -308,7 +314,7 @@ class _ProjectCard extends StatelessWidget {
                         weight: FontWeight.w500,
                       ),
                       MyText(
-                        text: '${project.clientName}  |  ${project.location}',
+                        text: '${project.clientName} | ${project.location}',
                         color: kQuaternaryColor,
                         size: 12,
                       ),
@@ -359,7 +365,8 @@ class _ProjectCard extends StatelessWidget {
                 Expanded(
                   child: _InfoChip(
                     label: 'Deadline:',
-                    value: project.deadline.toString(),
+                    // Use the formatted date here instead of project.deadline.toString()
+                    value: formattedDeadlineDate,
                   ),
                 ),
               ],
@@ -406,7 +413,6 @@ class _ProjectCard extends StatelessWidget {
     );
   }
 }
-
 class _InfoChip extends StatelessWidget {
   final String label;
   final String value;

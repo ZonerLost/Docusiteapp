@@ -9,7 +9,7 @@ import 'package:docu_site/utils/Utils.dart';
 import '../../models/project/collaborator.dart';
 import '../../models/project/project.dart';
 import '../../models/project/project_file.dart';
-import '../../services/project_services/firestore_project_services.dart'; // Assuming this exists for snackbars
+import '../../services/project_services/firestore_project_services.dart';
 
 
 class ProjectDetailsController extends GetxController {
@@ -113,11 +113,9 @@ class ProjectDetailsController extends GetxController {
     }
   }
 
-  Future<void> addNewPdf(String category, String filePath, String fileName) async {
+  Future<bool> addNewPdf(String category, String filePath, String fileName) async {
     isUploadingFile.value = true;
-
     try {
-      // Upload file to Firebase Storage
       final storageRef = _storage.ref().child('project_files/$projectId/$fileName');
       final uploadTask = await storageRef.putData(
         await File(filePath).readAsBytes(),
@@ -125,7 +123,6 @@ class ProjectDetailsController extends GetxController {
       );
       final fileUrl = await uploadTask.ref.getDownloadURL();
 
-      // Create new ProjectFile
       final newFile = ProjectFile(
         id: projectId,
         uploadedBy: projectOwnerName,
@@ -137,12 +134,10 @@ class ProjectDetailsController extends GetxController {
         newImagesCount: 0,
       );
 
-      // Update main projects collection
       await _firestore.collection('projects').doc(projectId).update({
         'files': FieldValue.arrayUnion([newFile.toMap()])
       });
 
-      // Update user's projects subcollection
       final currentUserId = _auth.currentUser?.uid;
       if (currentUserId != null) {
         await _firestore
@@ -155,13 +150,16 @@ class ProjectDetailsController extends GetxController {
         });
       }
 
-      Utils.snackBar('Success', 'File "$fileName" uploaded successfully.');
+      return true;
     } catch (e) {
-      Utils.snackBar('Error', 'Failed to upload file: ${e.toString()}');
+      print('Upload error: $e');
+      // Utils.snackBar("Failed to upload $fileName", "$e");
+      return false;
     } finally {
       isUploadingFile.value = false;
     }
   }
+
 
   void deleteProject() {
     Utils.snackBar('Action', 'Delete project functionality TBD for ID: $projectId.');

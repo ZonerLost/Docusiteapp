@@ -1,1 +1,42 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"docusite-app","appId":"1:1072828557755:android:7bce26cd3486fd7f523c9e","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"docusite-app","configurations":{"android":"1:1072828557755:android:7bce26cd3486fd7f523c9e","ios":"1:1072828557755:ios:ce84a29980f9f85a523c9e","web":"1:1072828557755:web:656919ae3a83aca6523c9e"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "docusite-app",
+          "appId": "1:1072828557755:android:7bce26cd3486fd7f523c9e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "docusite-app",
+          "configurations": {
+            "android": "1:1072828557755:android:7bce26cd3486fd7f523c9e",
+            "ios": "1:1072828557755:ios:ce84a29980f9f85a523c9e",
+            "web": "1:1072828557755:web:656919ae3a83aca6523c9e"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

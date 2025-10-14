@@ -787,16 +787,23 @@ class _AddNewPdfState extends State<_AddNewPdf> {
             onTap: selectedFile == null
                 ? null
                 : () async {
-              if (selectedFile != null) {
-                await widget.controller.addNewPdf(
-                  selectedPdfType,
-                  selectedFile!.path!,
-                  fileName!,
-                );
-                Get.back();
+              // Close the bottom sheet immediately
+              Get.back();
+
+              // Perform upload
+              final success = await widget.controller.addNewPdf(
+                selectedPdfType,
+                selectedFile!.path!,
+                fileName!,
+              );
+
+              // Show snackbar based on result
+              if (success) {
+                Utils.snackBar('Success', 'File "$fileName" uploaded successfully.');
               }
             },
           ),
+
         ],
       ),
     );
