@@ -1,4 +1,4 @@
-import 'package:docu_site/controllers/project/project_detail_controller.dart';
+
 import 'package:docu_site/services/project_services/firestore_project_services.dart';
 import 'package:docu_site/utils/Utils.dart';
 import 'package:docu_site/view/screens/notifications/notifications.dart';
@@ -37,7 +37,7 @@ Future<void> _initializeFirebaseMessaging() async {
   if (settings.authorizationStatus == AuthorizationStatus.authorized) {
     print('✅ User granted notification permission');
   } else if (settings.authorizationStatus == AuthorizationStatus.provisional) {
-    print('User granted provisional permission');
+    print('User granted provisional permission'); 
   } else {
     print('❌ User declined or has not accepted permission');
   }
