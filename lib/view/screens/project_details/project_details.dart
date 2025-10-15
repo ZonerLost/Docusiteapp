@@ -23,6 +23,7 @@ import '../../../models/project/project.dart';
 import '../../../models/project/project_file.dart';
 import '../../../view_model/home/home_view_model.dart';
 import '../../widget/invite_member_dialog.dart';
+import '../home/invite_to_project_dialog.dart';
 
 class ProjectDetails extends StatelessWidget {
   final String projectId;
@@ -96,10 +97,15 @@ class ProjectDetails extends StatelessWidget {
                               value: 'invite',
                               height: 25,
                               onTap: () {
-                                homeViewModel.memberNameController.clear();
-                                homeViewModel.memberEmailController.clear();
+                                // Only allow project owner to invite members
+                                if (!controller.isCurrentUserOwner) {
+                                  Utils.snackBar('Error', 'Only project owner can invite members.');
+                                  return;
+                                }
+                                controller.memberNameController.clear();
+                                controller.memberEmailController.clear();
                                 Get.bottomSheet(
-                                  InviteNewMember(),
+                                  InviteToProjectDialog(controller: controller),
                                   isScrollControlled: true,
                                 );
                               },
@@ -124,13 +130,38 @@ class ProjectDetails extends StatelessWidget {
                               padding: EdgeInsets.symmetric(horizontal: 10),
                               value: 'delete',
                               height: 25,
-                              onTap: controller.deleteProject,
-                              child: MyText(
+                              onTap: () {
+                                // Add a small delay to let the popup menu close
+                                Future.delayed(Duration(milliseconds: 300), () {
+                                  controller.deleteProject();
+                                });
+                              },
+                              child: Obx(() => controller.isDeletingProject.value
+                                  ? Row(
+                                children: [
+                                  SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: kRedColor,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  MyText(
+                                    text: 'Deleting...',
+                                    size: 14,
+                                    color: kRedColor,
+                                    weight: FontWeight.w500,
+                                  ),
+                                ],
+                              )
+                                  : MyText(
                                 text: 'Delete Project',
                                 size: 14,
                                 color: kRedColor,
                                 weight: FontWeight.w500,
-                              ),
+                              )),
                             ),
                           ];
                         },
@@ -531,28 +562,30 @@ class _Members extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       final List<Collaborator> members = controller.project.value?.collaborators ?? [];
-      final homeViewModel = Get.find<HomeViewModel>();
+      final bool isCurrentUserOwner = controller.isCurrentUserOwner;
 
       return ListView(
         physics: BouncingScrollPhysics(),
         padding: AppSizes.DEFAULT,
         shrinkWrap: true,
         children: [
-          MyText(
-            onTap: () {
-              homeViewModel.memberNameController.clear();
-              homeViewModel.memberEmailController.clear();
-              Get.bottomSheet(
-                InviteNewMember(),
-                isScrollControlled: true,
-              );
-            },
-            text: '+ Invite new member',
-            size: 16,
-            weight: FontWeight.w500,
-            color: kSecondaryColor,
-            paddingBottom: 12,
-          ),
+          // Only show invite button to project owner
+          if (isCurrentUserOwner)
+            MyText(
+              onTap: () {
+                controller.memberNameController.clear();
+                controller.memberEmailController.clear();
+                Get.bottomSheet(
+                  InviteToProjectDialog(controller: controller),
+                  isScrollControlled: true,
+                );
+              },
+              text: '+ Invite new member',
+              size: 16,
+              weight: FontWeight.w500,
+              color: kSecondaryColor,
+              paddingBottom: 12,
+            ),
 
           if (members.isEmpty)
             Padding(
@@ -574,6 +607,7 @@ class _Members extends StatelessWidget {
             itemBuilder: (context, index) {
               final member = members[index];
               final bool isOwner = member.uid == controller.project.value?.ownerId;
+              final bool isCurrentUser = member.uid == controller.auth.currentUser?.uid;
 
               return GestureDetector(
                 onTap: () {},
@@ -613,21 +647,33 @@ class _Members extends StatelessWidget {
                                     text: '(Owner)',
                                     weight: FontWeight.w700,
                                   ),
+                                if (isCurrentUser)
+                                  MyText(
+                                    paddingLeft: 6,
+                                    size: 10,
+                                    color: kGreenColor,
+                                    text: '(You)',
+                                    weight: FontWeight.w700,
+                                  ),
                               ],
                             ),
                             MyText(
                               paddingTop: 4,
                               size: 12,
                               color: kQuaternaryColor,
-                              text: member.role,
+                              text: '${member.role} • ${member.canEdit ? 'Can Edit' : 'View Only'}',
                             ),
                           ],
                         ),
                       ),
-                      if (!isOwner)
+                      // Only show remove button if:
+                      // 1. Current user is project owner
+                      // 2. The member is not the owner
+                      // 3. The member is not the current user (can't remove yourself)
+                      if (isCurrentUserOwner && !isOwner && !isCurrentUser)
                         GestureDetector(
                           onTap: () {
-                            // controller.removeMember(member.uid);
+                            _showRemoveMemberConfirmation(member);
                           },
                           child: Container(
                             padding: EdgeInsets.all(8),
@@ -656,6 +702,43 @@ class _Members extends StatelessWidget {
         ],
       );
     });
+  }
+
+  void _showRemoveMemberConfirmation(Collaborator member) {
+    Get.dialog(
+      AlertDialog(
+        title: MyText(
+          text: 'Remove Member',
+          size: 18,
+          weight: FontWeight.w600,
+        ),
+        content: MyText(
+          text: 'Are you sure you want to remove ${member.name} from this project? They will lose access to all project files and data.',
+          size: 14,
+          color: kQuaternaryColor,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: MyText(
+              text: 'Cancel',
+              color: kQuaternaryColor,
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Get.back();
+              controller.removeMember(member.uid);
+            },
+            child: MyText(
+              text: 'Remove',
+              color: kRedColor,
+              weight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
