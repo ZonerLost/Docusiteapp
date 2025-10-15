@@ -1,20 +1,22 @@
-import Flutter
 import UIKit
-import Firebase
+import Flutter
+import FirebaseCore   // prefer FirebaseCore over `import Firebase`
 import FirebaseMessaging
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
-  override func application(
-    _ application: UIApplication,
-    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
-  ) -> Bool {
-    GeneratedPluginRegistrant.register(with: self)
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+override func application(
+  _ application: UIApplication,
+  didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+) -> Bool {
+
+  if FirebaseApp.app() == nil {
+    FirebaseApp.configure()
   }
 
-  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-      FirebaseApp.configure()
-      return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-    }
+  GeneratedPluginRegistrant.register(with: self)
+  
+  return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+}
+
 }

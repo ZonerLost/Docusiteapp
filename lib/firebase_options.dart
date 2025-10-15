@@ -70,6 +70,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1072828557755',
     projectId: 'docusite-app',
     storageBucket: 'docusite-app.firebasestorage.app',
+    androidClientId: '1072828557755-1ssl0ushstq81359mup9os9u6t8v18e1.apps.googleusercontent.com',
+    iosClientId: '1072828557755-kedp0migof2qvfn603vr2pdrk4hhh5pb.apps.googleusercontent.com',
     iosBundleId: 'com.example.docsuite',
   );
+
 }
