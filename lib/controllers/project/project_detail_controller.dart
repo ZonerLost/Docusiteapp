@@ -248,18 +248,6 @@ class ProjectDetailsController extends GetxController {
         'files': FieldValue.arrayUnion([newFile.toMap()])
       });
 
-      // Update files in user's projects subcollection for all collaborators
-      final collaborators = project.value?.collaborators ?? [];
-      for (final collab in collaborators) {
-        await _firestore
-            .collection('users')
-            .doc(collab.uid)
-            .collection('projects')
-            .doc(projectId)
-            .update({
-          'files': FieldValue.arrayUnion([newFile.toMap()])
-        });
-      }
 
       return true;
     } catch (e) {

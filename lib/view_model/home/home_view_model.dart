@@ -39,6 +39,102 @@ class HomeViewModel extends GetxController {
   RxBool isInvitingMember = false.obs;
   RxString selectedMemberRole = Project.roleOptions.first.obs;
 
+
+  // Add these Rx variables to HomeViewModel
+  RxString searchQuery = ''.obs;
+  RxString filterClient = ''.obs;
+  RxString filterLocation = ''.obs;
+  RxString filterProgress = ''.obs;
+  RxString filterPdf = ''.obs;
+
+
+  // Add these Rx variables for search
+  RxBool isSearching = false.obs;
+  TextEditingController searchController = TextEditingController();
+
+// Method to start searching
+  void startSearch() {
+    isSearching.value = true;
+    searchQuery.value = '';
+    searchController.clear();
+  }
+
+// Method to stop searching
+  void stopSearch() {
+    isSearching.value = false;
+    searchQuery.value = '';
+    searchController.clear();
+  }
+
+// Method to update search query
+  void updateSearchQuery(String query) {
+    searchQuery.value = query;
+  }
+
+// Add this computed property to filter projects
+  List<Project> get filteredProjects {
+    var filtered = projects.where((project) {
+      // Search by title
+      if (searchQuery.isNotEmpty) {
+        if (!project.title.toLowerCase().contains(searchQuery.value.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Filter by client
+      if (filterClient.isNotEmpty) {
+        if (!project.clientName.toLowerCase().contains(filterClient.value.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Filter by location
+      if (filterLocation.isNotEmpty) {
+        if (!project.location.toLowerCase().contains(filterLocation.value.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Filter by progress
+      if (filterProgress.isNotEmpty) {
+        final progressPercent = (project.progress * 100).toInt();
+        final filterValue = filterProgress.value.replaceAll('%', '');
+        if (filterValue.isNotEmpty) {
+          final targetProgress = int.tryParse(filterValue) ?? 0;
+          if (progressPercent != targetProgress) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    }).toList();
+
+    return filtered;
+  }
+
+// Method to clear all filters
+  void clearFilters() {
+    searchQuery.value = '';
+    filterClient.value = '';
+    filterLocation.value = '';
+    filterProgress.value = '';
+    filterPdf.value = '';
+  }
+
+// Method to apply filters
+  void applyFilters({
+    String? client,
+    String? location,
+    String? progress,
+    String? pdf,
+  }) {
+    filterClient.value = client ?? '';
+    filterLocation.value = location ?? '';
+    filterProgress.value = progress ?? '';
+    filterPdf.value = pdf ?? '';
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -205,28 +301,64 @@ class HomeViewModel extends GetxController {
     log('[HomeViewModel] toggleAccess: Toggled access. CanEdit is now ${hasEditAccess.value}');
   }
 
-  void _clearProjectForm() {
-    titleController.clear();
-    clientController.clear();
-    locationController.clear();
-    deadlineController.clear();
-    assignedMembers.clear();
-    hasViewAccess.value = true;
-    hasEditAccess.value = false;
-    log('[HomeViewModel] _clearProjectForm: Project creation form has been cleared.');
+
+
+  RxMap<String, String> fieldErrors = <String, String>{}.obs;
+
+  bool validateProjectForm() {
+    fieldErrors.clear();
+
+    // Validate title
+    if (titleController.text.trim().isEmpty) {
+      fieldErrors['title'] = 'Project title is required';
+    }
+
+    // Validate client name
+    if (clientController.text.trim().isEmpty) {
+      fieldErrors['client'] = 'Client name is required';
+    }
+
+    // Validate location
+    if (locationController.text.trim().isEmpty) {
+      fieldErrors['location'] = 'Project location is required';
+    }
+
+    // Validate deadline
+    if (deadlineController.text.trim().isEmpty) {
+      fieldErrors['deadline'] = 'Project deadline is required';
+    } else {
+      // Validate date format and ensure it's not in the past
+      try {
+        final selectedDate = DateTime.parse(deadlineController.text.trim());
+        final today = DateTime.now();
+        final todayDate = DateTime(today.year, today.month, today.day);
+        final selectedDateOnly = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+
+        if (selectedDateOnly.isBefore(todayDate)) {
+          fieldErrors['deadline'] = 'Deadline cannot be in the past';
+        }
+      } catch (e) {
+        fieldErrors['deadline'] = 'Invalid date format';
+      }
+    }
+
+    return fieldErrors.isEmpty;
   }
 
+  void clearFieldError(String fieldName) {
+    if (fieldErrors.containsKey(fieldName)) {
+      fieldErrors.remove(fieldName);
+    }
+  }
 
-  // --- CORE LOGIC - PROJECT & MEMBER MANAGEMENT ---
   Future<void> createNewProject() async {
     log('[HomeViewModel] createNewProject: Attempting to create new project.');
-    if (titleController.text.isEmpty ||
-        clientController.text.isEmpty ||
-        locationController.text.isEmpty ||
-        deadlineController.text.isEmpty) {
-      String snackbarMessage = 'Please fill in all project details.';
-      log('[HomeViewModel] createNewProject: Validation failed. SNACKBAR: Missing Info, $snackbarMessage');
-      Utils.snackBar('Missing Info', snackbarMessage);
+
+    // Validate form first
+    if (!validateProjectForm()) {
+      String snackbarMessage = 'Please fix the errors in the form.';
+      log('[HomeViewModel] createNewProject: Form validation failed. SNACKBAR: Validation Error, $snackbarMessage');
+      Utils.snackBar('Validation Error', snackbarMessage);
       return;
     }
 
@@ -272,6 +404,14 @@ class HomeViewModel extends GetxController {
       }
 
       _clearProjectForm();
+
+      String snackbarMessage = 'Project created successfully!';
+      log('[HomeViewModel] createNewProject: Success. SNACKBAR: Success, $snackbarMessage');
+      Utils.snackBar('Success', snackbarMessage);
+
+      // Close the bottom sheet only on success
+      Get.back();
+
     } catch (e) {
       String snackbarMessage = 'Failed to create project: $e';
       log('[HomeViewModel] createNewProject: ERROR - $e. SNACKBAR: Error, $snackbarMessage');
@@ -281,6 +421,20 @@ class HomeViewModel extends GetxController {
       log('[HomeViewModel] createNewProject: isSavingProject set to false.');
     }
   }
+
+  void _clearProjectForm() {
+    titleController.clear();
+    clientController.clear();
+    locationController.clear();
+    deadlineController.clear();
+    assignedMembers.clear();
+    hasViewAccess.value = true;
+    hasEditAccess.value = false;
+    fieldErrors.clear(); // Clear any existing errors
+    log('[HomeViewModel] _clearProjectForm: Project creation form has been cleared.');
+  }
+
+
 
   Future<void> _sendInvite(String email, String projectId) async {
     log('[HomeViewModel] _sendInvite: Attempting to send invite to $email for project $projectId.');

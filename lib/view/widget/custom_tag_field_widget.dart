@@ -6,13 +6,22 @@ import 'package:flutter/material.dart';
 import 'package:textfield_tags/textfield_tags.dart';
 
 class CustomTagField extends StatefulWidget {
-  const CustomTagField({Key? key, this.labelText, this.marginBottom = 12,this.readOnly,this.tags})
-    : super(key: key);
+  const CustomTagField({
+    Key? key,
+    this.labelText,
+    this.marginBottom = 12,
+    this.readOnly,
+    this.tags,
+    this.controller,
+    this.onChanged,
+  }) : super(key: key);
 
   final String? labelText;
   final double? marginBottom;
   final bool? readOnly;
   final List<String>? tags;
+  final TextEditingController? controller;
+  final ValueChanged<String>? onChanged;
 
   @override
   State<CustomTagField> createState() => _CustomTagFieldState();
@@ -22,6 +31,7 @@ class _CustomTagFieldState extends State<CustomTagField> {
   late double _distanceToField;
   late DynamicTagController<DynamicTagData> _dynamicTagController;
   final random = Random();
+  late TextEditingController _internalController;
 
   @override
   void didChangeDependencies() {
@@ -33,12 +43,48 @@ class _CustomTagFieldState extends State<CustomTagField> {
   void dispose() {
     super.dispose();
     _dynamicTagController.dispose();
+    // Only dispose internal controller if we created it
+    if (widget.controller == null) {
+      _internalController.dispose();
+    }
   }
 
   @override
   void initState() {
     super.initState();
     _dynamicTagController = DynamicTagController<DynamicTagData>();
+
+    // Use provided controller or create internal one
+    _internalController = widget.controller ?? TextEditingController();
+
+    // Initialize with existing tags if provided
+    if (widget.tags != null && widget.tags!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final tag in widget.tags!) {
+          _dynamicTagController.addTag(DynamicTagData(tag, null));
+        }
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(CustomTagField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Update tags if they changed
+    if (widget.tags != oldWidget.tags) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Clear existing tags
+        _dynamicTagController.clearTags();
+
+        // Add new tags
+        if (widget.tags != null && widget.tags!.isNotEmpty) {
+          for (final tag in widget.tags!) {
+            _dynamicTagController.addTag(DynamicTagData(tag, null));
+          }
+        }
+      });
+    }
   }
 
   @override
@@ -62,7 +108,7 @@ class _CustomTagFieldState extends State<CustomTagField> {
             letterCase: LetterCase.normal,
             validator: (DynamicTagData tag) {
               if (_dynamicTagController.getTags!.any(
-                (element) => element.tag == tag.tag,
+                    (element) => element.tag == tag.tag,
               )) {
                 return '';
               }
@@ -70,17 +116,20 @@ class _CustomTagFieldState extends State<CustomTagField> {
             },
             inputFieldBuilder: (context, inputFieldValues) {
               return TextField(
+                readOnly: widget.readOnly ?? false,
                 style: TextStyle(
                   fontSize: 16,
                   color: kTertiaryColor,
                   fontWeight: FontWeight.w500,
                 ),
-                controller: inputFieldValues.textEditingController,
+                controller: _internalController,
                 focusNode: inputFieldValues.focusNode,
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: kFillColor,
-                  suffixIcon: Column(
+                  suffixIcon: widget.readOnly == true
+                      ? null
+                      : Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Image.asset(Assets.imagesSearchIcon, height: 20),
@@ -121,64 +170,79 @@ class _CustomTagFieldState extends State<CustomTagField> {
                   ),
                   prefixIcon: inputFieldValues.tags.isNotEmpty
                       ? SizedBox(
+                    height: 30,
+                    child: ListView.separated(
+                      controller: inputFieldValues.tagScrollController,
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(horizontal: 15),
+                      itemCount: inputFieldValues.tags.length,
+                      separatorBuilder: (context, index) =>
+                      const SizedBox(width: 5.0),
+                      itemBuilder: (context, index) {
+                        final tag = inputFieldValues.tags[index];
+                        return Container(
                           height: 30,
-                          child: ListView.separated(
-                            controller: inputFieldValues.tagScrollController,
-                            scrollDirection: Axis.horizontal,
-                            physics: BouncingScrollPhysics(),
-                            shrinkWrap: true,
-                            padding: EdgeInsets.symmetric(horizontal: 15),
-                            itemCount: inputFieldValues.tags.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(width: 5.0),
-                            itemBuilder: (context, index) {
-                              final tag = inputFieldValues.tags[index];
-                              return Container(
-                                height: 30,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
-                                  color: kSecondaryColor.withValues(alpha: 0.1),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10.0,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      '${tag.tag}',
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        color: kSecondaryColor,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4.0),
-                                    GestureDetector(
-                                      onTap: () {
-                                        inputFieldValues.onTagRemoved(tag);
-                                      },
-                                      child: Image.asset(
-                                        Assets.imagesCancelBlue,
-                                        height: 10,
-                                        width: 10,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: kSecondaryColor.withValues(alpha: 0.1),
                           ),
-                        )
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10.0,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '${tag.tag}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: kSecondaryColor,
+                                ),
+                              ),
+                              if (widget.readOnly != true) ...[
+                                const SizedBox(width: 4.0),
+                                GestureDetector(
+                                  onTap: () {
+                                    inputFieldValues.onTagRemoved(tag);
+                                  },
+                                  child: Image.asset(
+                                    Assets.imagesCancelBlue,
+                                    height: 10,
+                                    width: 10,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  )
                       : null,
                 ),
                 onChanged: (value) {
                   final tagData = DynamicTagData(value, null);
                   inputFieldValues.onTagChanged(tagData);
+
+                  // Call the external onChanged callback
+                  if (widget.onChanged != null) {
+                    widget.onChanged!(value);
+                  }
                 },
                 onSubmitted: (value) {
                   final tagData = DynamicTagData(value, null);
                   inputFieldValues.onTagSubmitted(tagData);
+
+                  // Clear the text field after submission
+                  _internalController.clear();
+
+                  // Call the external onChanged callback
+                  if (widget.onChanged != null) {
+                    widget.onChanged!(value);
+                  }
                 },
               );
             },

@@ -154,6 +154,8 @@ class SimpleTextField extends StatelessWidget {
     this.isReadOnly,
     this.onTap,
     this.keyboardType,
+    this.errorText, // New parameter for error message
+    this.isRequired = false, // New parameter to show required indicator
   }) : super(key: key);
 
   final String? labelText, hintText;
@@ -166,6 +168,8 @@ class SimpleTextField extends StatelessWidget {
   final Widget? prefix, suffix;
   final VoidCallback? onTap;
   final TextInputType? keyboardType;
+  final String? errorText; // Error message to display
+  final bool isRequired; // Whether to show required indicator
 
   @override
   Widget build(BuildContext context) {
@@ -175,12 +179,26 @@ class SimpleTextField extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (labelText != null)
-            MyText(
-              text: labelText ?? '',
-              paddingBottom: 4,
-              size: 14,
-              weight: FontWeight.w500,
-              color: kQuaternaryColor,
+            Row(
+              children: [
+                Expanded(
+                  child: MyText(
+                    text: labelText ?? '',
+                    paddingBottom: 4,
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: kQuaternaryColor,
+                  ),
+                ),
+                if (isRequired)
+                  MyText(
+                    text: '*',
+                    paddingBottom: 4,
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: Colors.red,
+                  ),
+              ],
             ),
           TextFormField(
             controller: controller,
@@ -218,26 +236,51 @@ class SimpleTextField extends StatelessWidget {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(
+                  color: errorText != null ? Colors.red : Colors.transparent,
+                  width: 1.0,
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(
+                  color: errorText != null ? Colors.red : Colors.transparent,
+                  width: 1.0,
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(
+                  color: errorText != null ? Colors.red : kSecondaryColor,
+                  width: 1.0,
+                ),
               ),
               errorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: const BorderSide(
+                  color: Colors.red,
+                  width: 1.0,
+                ),
               ),
               focusedErrorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: const BorderSide(
+                  color: Colors.red,
+                  width: 1.0,
+                ),
               ),
             ),
           ),
+          // Error message below the text field
+          if (errorText != null) ...[
+            const SizedBox(height: 4),
+            MyText(
+              text: errorText!,
+              size: 12,
+              color: Colors.red,
+              paddingBottom: 8,
+            ),
+          ],
         ],
       ),
     );
