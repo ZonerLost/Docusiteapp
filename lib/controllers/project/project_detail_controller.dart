@@ -35,6 +35,9 @@ class ProjectDetailsController extends GetxController {
 
   ProjectDetailsController({required this.projectId});
 
+  final memberRoleController = TextEditingController();
+
+
   @override
   void onInit() {
     super.onInit();
@@ -85,11 +88,16 @@ class ProjectDetailsController extends GetxController {
     return currentUser != null && project.value?.ownerId == currentUser.uid;
   }
 
-  // New method for inviting members to existing project
+  // Get current user info for updates
+  String get _currentUserId => auth.currentUser?.uid ?? '';
+  String get _currentUserName => auth.currentUser?.displayName ?? auth.currentUser?.email?.split('@')[0] ?? 'Unknown User';
+
+  // New method for inviting members to existing project with update tracking
   Future<void> inviteMemberToProject() async {
     final name = memberNameController.text.trim();
     final email = memberEmailController.text.trim();
-    final role = selectedMemberRole.value;
+    final role = memberRoleController.text.trim();
+    final finalRole = role.isEmpty ? 'Member' : role;
 
     if (name.isEmpty || email.isEmpty || !GetUtils.isEmail(email)) {
       Utils.snackBar('Validation', 'Please enter a valid name and email address.');
@@ -137,8 +145,25 @@ class ProjectDetailsController extends GetxController {
         return;
       }
 
+      // Get current project to add update
+      final currentProject = project.value;
+      if (currentProject == null) {
+        Utils.snackBar('Error', 'Project not found.');
+        return;
+      }
+
+      // Add invite sent update to project
+      final updatedProject = currentProject.addInviteSentUpdate(
+        userName,
+        _currentUserId,
+        _currentUserName,
+      );
+
+      // Update project with the new update
+      await _projectService.updateProject(projectId, updatedProject);
+
       // Send the invitation
-      await _sendProjectInvite(email, userName, role);
+      await _sendProjectInvite(email, userName, finalRole);
 
       Get.back();
       memberNameController.clear();
@@ -187,7 +212,7 @@ class ProjectDetailsController extends GetxController {
     }
   }
 
-  // Remove member from project
+  // Remove member from project with update tracking
   Future<void> removeMember(String memberId) async {
     try {
       final member = project.value?.collaborators.firstWhereOrNull((c) => c.uid == memberId);
@@ -202,23 +227,27 @@ class ProjectDetailsController extends GetxController {
         return;
       }
 
-      // Remove from main projects collection
-      await _firestore.collection('projects').doc(projectId).update({
-        'collaborators': FieldValue.arrayRemove([member.toMap()])
-      });
+      // Get current project to add update
+      final currentProject = project.value;
+      if (currentProject == null) {
+        Utils.snackBar('Error', 'Project not found.');
+        return;
+      }
 
-      // // Remove from user's projects subcollection for all collaborators
-      // final collaborators = project.value?.collaborators ?? [];
-      // for (final collab in collaborators) {
-      //   await _firestore
-      //       .collection('users')
-      //       .doc(collab.uid)
-      //       .collection('projects')
-      //       .doc(projectId)
-      //       .update({
-      //     'collaborators': FieldValue.arrayRemove([member.toMap()])
-      //   });
-      // }
+      // Add collaborator removed update
+      final updatedProject = currentProject.addCollaboratorUpdate(
+        member.name,
+        'removed',
+        _currentUserId,
+        _currentUserName,
+      );
+
+      // Remove from main projects collection with update
+      await _firestore.collection('projects').doc(projectId).update({
+        'collaborators': FieldValue.arrayRemove([member.toMap()]),
+        'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       Utils.snackBar('Success', '${member.name} removed from project.');
     } catch (e) {
@@ -226,6 +255,7 @@ class ProjectDetailsController extends GetxController {
     }
   }
 
+  // Add PDF with update tracking
   Future<bool> addNewPdf(String category, String filePath, String fileName) async {
     isUploadingFile.value = true;
     try {
@@ -244,17 +274,162 @@ class ProjectDetailsController extends GetxController {
         newImagesCount: 0,
       );
 
+      // Get current project to add update
+      final currentProject = project.value;
+      if (currentProject == null) {
+        Utils.snackBar('Error', 'Project not found.');
+        return false;
+      }
+
+      // Add file added update
+      final updatedProject = currentProject.addFileUpdate(
+        fileName,
+        'added',
+        _currentUserId,
+        _currentUserName,
+      );
+
+      // Update project with new file and update
       await _firestore.collection('projects').doc(projectId).update({
-        'files': FieldValue.arrayUnion([newFile.toMap()])
+        'files': FieldValue.arrayUnion([newFile.toMap()]),
+        'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
-
-
+      Get.back();
       return true;
     } catch (e) {
       Utils.snackBar('Error', 'Failed to upload file: ${e.toString()}');
       return false;
     } finally {
       isUploadingFile.value = false;
+    }
+  }
+
+  // Delete file with update tracking
+  Future<void> deleteFile(ProjectFile file) async {
+    try {
+      // Get current project to add update
+      final currentProject = project.value;
+      if (currentProject == null) {
+        Utils.snackBar('Error', 'Project not found.');
+        return;
+      }
+
+      // Add file deleted update
+      final updatedProject = currentProject.addFileUpdate(
+        file.fileName,
+        'deleted',
+        _currentUserId,
+        _currentUserName,
+      );
+
+      // Delete file from Firebase Storage
+      try {
+        final fileRef = _storage.refFromURL(file.fileUrl);
+        await fileRef.delete();
+      } catch (e) {
+        print('Error deleting file from storage: $e');
+        // Continue with removing from Firestore even if storage deletion fails
+      }
+
+      // Update project - remove file and add update
+      await _firestore.collection('projects').doc(projectId).update({
+        'files': FieldValue.arrayRemove([file.toMap()]),
+        'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      Utils.snackBar('Success', '${file.fileName} deleted successfully.');
+    } catch (e) {
+      Utils.snackBar('Error', 'Failed to delete file: ${e.toString()}');
+    }
+  }
+
+  // Update project status with tracking
+  Future<void> updateProjectStatus(String newStatus) async {
+    try {
+      final currentProject = project.value;
+      if (currentProject == null) {
+        Utils.snackBar('Error', 'Project not found.');
+        return;
+      }
+
+      // Add status update
+      final updatedProject = currentProject.addStatusUpdate(
+        newStatus,
+        _currentUserId,
+        _currentUserName,
+      );
+
+      // Update project status and add update
+      await _firestore.collection('projects').doc(projectId).update({
+        'status': newStatus,
+        'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      Utils.snackBar('Success', 'Project status updated to $newStatus.');
+    } catch (e) {
+      Utils.snackBar('Error', 'Failed to update project status: ${e.toString()}');
+    }
+  }
+
+  // Update project progress with tracking
+  Future<void> updateProjectProgress(double newProgress) async {
+    try {
+      final currentProject = project.value;
+      if (currentProject == null) {
+        Utils.snackBar('Error', 'Project not found.');
+        return;
+      }
+
+      // Add progress update
+      final updatedProject = currentProject.addProgressUpdate(
+        newProgress,
+        _currentUserId,
+        _currentUserName,
+      );
+
+      // Update project progress and add update
+      await _firestore.collection('projects').doc(projectId).update({
+        'progress': newProgress,
+        'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      Utils.snackBar('Success', 'Project progress updated to ${(newProgress * 100).toStringAsFixed(0)}%.');
+    } catch (e) {
+      Utils.snackBar('Error', 'Failed to update project progress: ${e.toString()}');
+    }
+  }
+
+  // Update project info with tracking
+  Future<void> updateProjectInfo(String field, String newValue) async {
+    try {
+      final currentProject = project.value;
+      if (currentProject == null) {
+        Utils.snackBar('Error', 'Project not found.');
+        return;
+      }
+
+      // Add info update
+      final updatedProject = currentProject.addProjectInfoUpdate(
+        field,
+        newValue,
+        _currentUserId,
+        _currentUserName,
+      );
+
+      // Update project field and add update
+      await _firestore.collection('projects').doc(projectId).update({
+        field: newValue,
+        'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      Utils.snackBar('Success', 'Project $field updated successfully.');
+    } catch (e) {
+      Utils.snackBar('Error', 'Failed to update project $field: ${e.toString()}');
     }
   }
 
@@ -416,7 +591,6 @@ class ProjectDetailsController extends GetxController {
 
     return true;
   }
-
 
   @override
   void onClose() {

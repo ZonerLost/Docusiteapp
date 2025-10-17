@@ -408,12 +408,68 @@ class _ProjectCard extends StatelessWidget {
     return DateFormat('yyyy-MM-dd').format(project.deadline);
   }
 
+  // Helper function to get the latest update message
+  String get latestUpdateMessage {
+    if (project.lastUpdates.isEmpty) {
+      return 'Project created';
+    }
+
+    // Sort updates by timestamp to get the latest one
+    final sortedUpdates = List<ProjectUpdate>.from(project.lastUpdates)
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    return sortedUpdates.first.message;
+  }
+
+  // Helper function to get time ago for the latest update
+  String get latestUpdateTime {
+    if (project.lastUpdates.isEmpty) {
+      return 'Just now';
+    }
+
+    // Sort updates by timestamp to get the latest one
+    final sortedUpdates = List<ProjectUpdate>.from(project.lastUpdates)
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    final latestUpdate = sortedUpdates.first;
+    final timeDifference = DateTime.now().difference(latestUpdate.timestamp);
+
+    if (timeDifference.inMinutes < 1) {
+      return 'Just now';
+    } else if (timeDifference.inMinutes < 60) {
+      return '${timeDifference.inMinutes}m ago';
+    } else if (timeDifference.inHours < 24) {
+      return '${timeDifference.inHours}h ago';
+    } else {
+      return '${timeDifference.inDays}d ago';
+    }
+  }
+
+  // Count PDF files
+  int get pdfCount {
+    return project.files.where((file) => file.fileName.toLowerCase().endsWith('.pdf')).length;
+  }
+
+  // Count image files (common image extensions)
+  int get imageCount {
+    final imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
+    return project.files.where((file) {
+      final fileName = file.fileName.toLowerCase();
+      return imageExtensions.any((ext) => fileName.endsWith(ext));
+    }).length;
+  }
+
+  // Count other files (non-PDF, non-image)
+  int get otherFilesCount {
+    return project.files.length - pdfCount - imageCount;
+  }
+
   @override
   Widget build(BuildContext context) {
     final timeDifference = DateTime.now().difference(project.updatedAt);
     String lastUpdated = timeDifference.inMinutes < 60
-        ? '${timeDifference.inMinutes} mins ago'
-        : '${timeDifference.inHours} hours ago';
+        ? '${timeDifference.inMinutes}m ago'
+        : '${timeDifference.inHours}h ago';
 
     return GestureDetector(
       onTap: () {
@@ -494,13 +550,13 @@ class _ProjectCard extends StatelessWidget {
                 Expanded(
                   child: _InfoChip(
                     label: 'Deadline:',
-                    // Use the formatted date here instead of project.deadline.toString()
                     value: formattedDeadlineDate,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
+            // Combined section for Latest Update and File Counts
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
@@ -510,27 +566,58 @@ class _ProjectCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  MyText(
-                    text: 'Progress',
-                    size: 12,
-                    paddingBottom: 5,
-                  ),
+                  // Latest Update Section
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: LinearPercentIndicator(
-                          lineHeight: 8.0,
-                          percent: project.progress,
-                          padding: AppSizes.ZERO,
-                          backgroundColor: kFillColor,
-                          progressColor: kSecondaryColor,
-                          barRadius: const Radius.circular(50),
-                        ),
+                      MyText(
+                        text: 'Latest Update',
+                        size: 12,
+                        weight: FontWeight.w600,
                       ),
                       MyText(
-                        text: '${(project.progress * 100).toInt()}%',
-                        paddingLeft: 20,
+                        text: latestUpdateTime,
+                        size: 10,
+                        color: kQuaternaryColor,
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: kFillColor,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: MyText(
+                      text: latestUpdateMessage,
+                      size: 11,
+                      color: kTertiaryColor,
+                      maxLines: 2,
+                      textOverflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // File Counts Section
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _FileCountItem(
+                        icon: Icons.picture_as_pdf, // PDF icon
+                        count: pdfCount,
+                        label: 'PDFs',
+                      ),
+                      _FileCountItem(
+                        icon: Icons.photo_library, // Photos icon
+                        count: imageCount,
+                        label: 'Photos',
+                      ),
+                      // _FileCountItem(
+                      //   icon: Icons.insert_drive_file, // Document icon for other files
+                      //   count: otherFilesCount,
+                      //   label: 'Others',
+                      // ),
                     ],
                   ),
                 ],
@@ -542,6 +629,51 @@ class _ProjectCard extends StatelessWidget {
     );
   }
 }
+
+// Helper widget for file count items
+class _FileCountItem extends StatelessWidget {
+  final IconData icon;
+  final int count;
+  final String label;
+
+  const _FileCountItem({
+    required this.icon,
+    required this.count,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: kSecondaryColor,
+            ),
+            const SizedBox(width: 4),
+            MyText(
+              text: '$count',
+              size: 12,
+              weight: FontWeight.w600,
+              color: kSecondaryColor,
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        MyText(
+          text: label,
+          size: 10,
+          color: kQuaternaryColor,
+        ),
+      ],
+    );
+  }
+}
+
 
 
 class _InfoChip extends StatelessWidget {

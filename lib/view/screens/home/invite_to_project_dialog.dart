@@ -66,13 +66,13 @@ class InviteToProjectDialog extends StatelessWidget {
                   // keyboardType: TextInputType.emailAddress,
                 ),
                 SizedBox(height: 16),
-                CustomDropDown(
+                // CHANGED: Replace dropdown with text field for custom role
+                SimpleTextField(
+                  controller: controller.memberRoleController, // Add this controller
                   labelText: 'Role',
-                  hintText: 'Select role',
-                  items: Project.roleOptions,
-                  selectedValue: controller.selectedMemberRole.value,
-                  onChanged: (v) {
-                    controller.selectedMemberRole.value = v;
+                  hintText: 'e.g., Client, Engineer, Project Manager, etc.',
+                  onChanged: (value) {
+                    controller.selectedMemberRole.value = value;
                   },
                 ),
                 SizedBox(height: 16),

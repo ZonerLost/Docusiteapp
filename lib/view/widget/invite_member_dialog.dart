@@ -15,6 +15,7 @@ import 'my_text_field_widget.dart';
 import 'my_text_widget.dart';
 
 
+// If you have an InviteNewMember widget, update it similarly:
 class InviteNewMember extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -22,77 +23,79 @@ class InviteNewMember extends StatelessWidget {
 
     return Container(
       height: Get.height * 0.6,
-      margin: const EdgeInsets.only(top: 55),
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
+      margin: EdgeInsets.only(top: 55),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
         color: kPrimaryColor,
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(12),
           topRight: Radius.circular(12),
         ),
       ),
-      child: Obx(
-            () => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            MyText(
-              text: 'Invite new member',
-              size: 18,
-              weight: FontWeight.w500,
-              paddingBottom: 8,
+      child: Obx(() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MyText(
+            text: 'Invite New Member',
+            size: 18,
+            weight: FontWeight.w500,
+            paddingBottom: 8,
+          ),
+          MyText(
+            text: 'Add a new member to collaborate on projects.',
+            color: kQuaternaryColor,
+            weight: FontWeight.w500,
+            size: 13,
+          ),
+          Container(
+            height: 1,
+            color: kBorderColor,
+            margin: EdgeInsets.symmetric(vertical: 12),
+          ),
+          Expanded(
+            child: ListView(
+              shrinkWrap: true,
+              padding: AppSizes.ZERO,
+              physics: BouncingScrollPhysics(),
+              children: [
+                SimpleTextField(
+                  controller: viewModel.memberNameController,
+                  labelText: 'Member Name',
+                  hintText: 'Enter full name',
+                ),
+                SizedBox(height: 16),
+                SimpleTextField(
+                  controller: viewModel.memberEmailController,
+                  labelText: 'Email Address',
+                  hintText: 'Enter email address',
+                ),
+                SizedBox(height: 16),
+                // CHANGED: Replace dropdown with text field for custom role
+                SimpleTextField(
+                  controller: viewModel.memberRoleController, // Add this controller
+                  labelText: 'Role',
+                  hintText: 'e.g., Client, Engineer, Project Manager, etc.',
+                  onChanged: (value) {
+                    viewModel.selectedMemberRole.value = value;
+                  },
+                ),
+                SizedBox(height: 16),
+                MyText(
+                  text: 'The member will be added to your project with the specified role.',
+                  size: 12,
+                  color: kQuaternaryColor,
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-            MyText(
-              text:
-              'Please enter the correct information to add a new member.',
-              color: kQuaternaryColor,
-              weight: FontWeight.w500,
-              size: 13,
-            ),
-            Container(
-              height: 1,
-              color: kBorderColor,
-              margin: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            Expanded(
-              child: ListView(
-                shrinkWrap: true,
-                padding: AppSizes.ZERO,
-                physics: const BouncingScrollPhysics(),
-                children: [
-                  SimpleTextField(
-                    controller: viewModel.memberNameController,
-                    labelText: 'Member Name',
-                    hintText: 'Chris Taylor',
-                  ),
-                  SimpleTextField(
-                    controller: viewModel.memberEmailController,
-                    labelText: 'Member email address',
-                    hintText: 'chris345@gmail.com',
-                  ),
-                  Obx(
-                        () => CustomDropDown(
-                      labelText: 'Member Role',
-                      hintText: 'Select Role',
-                      items: Project.roleOptions,
-                      selectedValue: viewModel.selectedMemberRole.value,
-                      onChanged: (v) {
-                        viewModel.selectedMemberRole.value = v;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            MyButton(
-              buttonText: 'Send Invite',
-              isLoading: viewModel.isInvitingMember.value,
-              onTap: viewModel.isInvitingMember.value
-                  ? null
-                  : viewModel.sendMemberInvite,
-            ),
-          ],
-        ),
-      ),
+          ),
+          MyButton(
+            buttonText: 'Add Member',
+            isLoading: viewModel.isInvitingMember.value,
+            onTap: viewModel.sendMemberInvite,
+          ),
+        ],
+      )),
     );
   }
 }

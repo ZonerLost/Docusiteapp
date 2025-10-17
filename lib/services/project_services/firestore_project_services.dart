@@ -11,21 +11,55 @@ class ProjectService extends GetxService {
 
   String? get currentUserId => _auth.currentUser?.uid;
 
-  // NEW: Reference to the top-level projects collection
   CollectionReference get _projectsCollection => _firestore.collection('projects');
 
-  // Reference to the user's projects subcollection (for quick owner lookup)
   CollectionReference get _userProjectsCollection {
     if (currentUserId == null) {
       throw Exception("User is not authenticated.");
     }
-    // Path: users/{userId}/projects
     return _firestore.collection('users').doc(currentUserId).collection('projects');
   }
 
-  /// 1. Create a new project document in Firestore using a Write Batch.
-  /// It creates the project in the main /projects collection and adds
-  /// a quick reference in the user's /users/{userId}/projects subcollection.
+
+  Future<void> updateProject(String projectId, Project project) async {
+    await _firestore
+        .collection('projects')
+        .doc(projectId)
+        .update(project.toMap());
+  }
+
+// In your ProjectService class
+  Future<Project?> getProject(String projectId) async {
+    try {
+      print('🔍 Fetching project from Firestore: $projectId');
+      final doc = await _firestore.collection('projects').doc(projectId).get();
+
+      if (doc.exists) {
+        print('📄 Document exists, creating Project object');
+        final project = Project.fromSnapshot(doc);
+        print('✅ Project created: ${project.title}');
+        return project;
+      } else {
+        print('❌ Document does not exist');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Error in getProject: $e');
+      rethrow;
+    }
+  }
+
+  // Method to add an update to a project
+  Future<void> addProjectUpdate(String projectId, ProjectUpdate update) async {
+    await _firestore
+        .collection('projects')
+        .doc(projectId)
+        .update({
+      'lastUpdates': FieldValue.arrayUnion([update.toMap()]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   Future<String> createProject(Project project) async {
     try {
       if (currentUserId == null) {
@@ -45,8 +79,7 @@ class ProjectService extends GetxService {
       // Add project data to the main collection
       batch.set(newProjectDocRef, projectData);
 
-      // 2. Add a lightweight reference in the user's subcollection
-      // This document only needs the ID and maybe the title for fast dashboard loading
+
       final userProjectRef = _userProjectsCollection.doc(projectId);
       batch.set(userProjectRef, {
         'projectId': projectId,
@@ -67,9 +100,6 @@ class ProjectService extends GetxService {
     }
   }
 
-  /// 2. Stream all projects where the current user is listed in the /users/{userId}/projects subcollection.
-  /// NOTE: This only fetches the lightweight reference documents.
-  /// The UI needs to be updated to fetch the full details for the Project Card.
   Stream<List<Project>> streamAllProjects() {
     return _projectsCollection
         .orderBy('updatedAt', descending: true)
@@ -99,9 +129,7 @@ class ProjectService extends GetxService {
       return <Project>[];
     });
   }
-  /// 3. Stream a single project document from the main collection.
-  /// This is used by the Project Details Controller to listen for real-time changes
-  /// to the currently viewed project.
+
   Stream<Project?> streamProject(String projectId) {
     return _projectsCollection.doc(projectId).snapshots().map((snapshot) {
       if (!snapshot.exists) {

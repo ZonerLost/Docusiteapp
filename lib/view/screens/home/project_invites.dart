@@ -124,7 +124,7 @@ class ProjectInvites extends StatelessWidget {
                                 height: 40,
                                 textSize: 14,
                                 buttonText: 'Decline',
-                                onTap: () => _viewModel.declineInvite(inviteId),
+                                onTap: () => _viewModel.declineInvite(inviteId,projectId),
                               ),
                             ),
                             Expanded(
@@ -220,13 +220,13 @@ class ProjectInvites extends StatelessWidget {
                   height: 40,
                   textSize: 14,
                   buttonText: 'Decline',
-                  onTap: () => _viewModel.declineInvite(projectId),
+                  onTap: () => _viewModel.declineInvite(projectId,projectId),
                 ),
               ),
               Expanded(
                 child: MyButton(
                   buttonText: 'Remove',
-                  onTap: () => _viewModel.declineInvite(projectId),
+                  onTap: () => _viewModel.declineInvite(projectId,projectId),
                   height: 40,
                   textSize: 14,
                   bgColor: kRedColor,

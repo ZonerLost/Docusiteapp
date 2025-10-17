@@ -52,6 +52,8 @@ class HomeViewModel extends GetxController {
   RxBool isSearching = false.obs;
   TextEditingController searchController = TextEditingController();
 
+  final memberRoleController = TextEditingController();
+
 // Method to start searching
   void startSearch() {
     isSearching.value = true;
@@ -380,7 +382,8 @@ class HomeViewModel extends GetxController {
         role: 'Project Owner',
       );
 
-      final Project newProject = Project(
+      // Create initial project with creation update
+      final initialProject = Project(
         id: '',
         title: titleController.text.trim(),
         clientName: clientController.text.trim(),
@@ -392,13 +395,37 @@ class HomeViewModel extends GetxController {
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
         status: 'In progress',
+        lastUpdates: [], // Start with empty updates
       );
 
-      log('[HomeViewModel] createNewProject: Creating project object: ${newProject.title}');
-      final projectId = await _projectService.createProject(newProject);
+      // Add creation update
+      final projectWithUpdate = initialProject.addCreationUpdate(
+        currentOwnerId,
+        currentOwnerName,
+      );
+
+      log('[HomeViewModel] createNewProject: Creating project object: ${projectWithUpdate.title}');
+      final projectId = await _projectService.createProject(projectWithUpdate);
       log('[HomeViewModel] createNewProject: Project created with ID: $projectId');
 
-      log('[HomeViewModel] createNewProject: Sending invites to ${assignedMembers.length} members.');
+      // Add updates for each assigned member invite
+      if (assignedMembers.value.isNotEmpty) {
+        final updatedProject = await _projectService.getProject(projectId);
+        if (updatedProject != null) {
+          var projectWithInviteUpdates = updatedProject;
+          for (var member in assignedMembers.value) {
+            projectWithInviteUpdates = projectWithInviteUpdates.addInviteSentUpdate(
+              member.name,
+              currentOwnerId,
+              currentOwnerName,
+            );
+          }
+          // Save the project with all invite sent updates
+          await _projectService.updateProject(projectId, projectWithInviteUpdates);
+        }
+      }
+
+      log('[HomeViewModel] createNewProject: Sending invites to ${assignedMembers.value.length} members.');
       for (var member in assignedMembers.value) {
         await _sendInvite(member.email, projectId);
       }
@@ -474,8 +501,12 @@ class HomeViewModel extends GetxController {
   Future<void> sendMemberInvite() async {
     final name = memberNameController.text.trim();
     final email = memberEmailController.text.trim();
-    final role = selectedMemberRole.value;
-    log('[HomeViewModel] sendMemberInvite: Attempting to add member: Name: $name, Email: $email, Role: $role');
+    final role = memberRoleController.text.trim(); // CHANGED: Get from text field
+
+    // Set default role if empty
+    final finalRole = role.isEmpty ? 'Member' : role;
+
+    log('[HomeViewModel] sendMemberInvite: Attempting to add member: Name: $name, Email: $email, Role: $finalRole');
 
     if (name.isEmpty || email.isEmpty || !GetUtils.isEmail(email)) {
       String snackbarMessage = 'Please enter a valid name and email address.';
@@ -498,9 +529,8 @@ class HomeViewModel extends GetxController {
         String snackbarMessage = 'Not an authorized user.';
         log('[HomeViewModel] sendMemberInvite: User not found. SNACKBAR: Error, $snackbarMessage');
         Utils.snackBar('Error', snackbarMessage);
-        return; // Important: return here
+        return;
       }
-      log('[HomeViewModel] sendMemberInvite: User with email $email found in "users" collection.');
 
       final userDoc = userQuery.docs.first;
       final userData = userDoc.data();
@@ -512,7 +542,7 @@ class HomeViewModel extends GetxController {
         String snackbarMessage = '$userName is already invited.';
         log('[HomeViewModel] sendMemberInvite: Member already invited. SNACKBAR: Info, $snackbarMessage');
         Utils.snackBar('Info', snackbarMessage);
-        return; // Important: return here
+        return;
       }
 
       final newMember = Collaborator(
@@ -521,15 +551,18 @@ class HomeViewModel extends GetxController {
         name: userName,
         canEdit: hasEditAccess.value,
         photoUrl: userPhotoUrl,
-        role: role,
+        role: finalRole, // CHANGED: Use the custom role
       );
 
       assignedMembers.add(newMember);
       Get.back();
+
+      // Clear all form fields
       memberNameController.clear();
       memberEmailController.clear();
-      selectedMemberRole.value = Project.roleOptions.first;
-      String snackbarMessage = '$userName added with role $role.';
+      memberRoleController.clear(); // ADD THIS: Clear role field
+
+      String snackbarMessage = '$userName added with role $finalRole.';
       log('[HomeViewModel] sendMemberInvite: Member added to local list. SNACKBAR: Success, $snackbarMessage');
       Utils.snackBar('Success', snackbarMessage);
     } catch (e) {
@@ -547,30 +580,48 @@ class HomeViewModel extends GetxController {
     try {
       final user = auth.currentUser!;
       final currentUserEmail = user.email ?? '';
-      log('[HomeViewModel] acceptInvite: Current user email: $currentUserEmail');
+      final currentUserName = user.displayName ?? user.email!.split('@')[0];
+      log('[HomeViewModel] acceptInvite: Current user email: $currentUserEmail, name: $currentUserName');
 
       final collaborator = {
         'uid': user.uid,
         'email': user.email,
-        'name': user.displayName ?? user.email!.split('@')[0],
+        'name': currentUserName,
         'canEdit': false, // Default access on accepting
         'photoUrl': user.photoURL ?? '',
         'role': 'Member', // Default role on accepting
       };
       log('[HomeViewModel] acceptInvite: Created collaborator object for user.');
 
+      // First, get the current project to add the update
+      final currentProject = await _projectService.getProject(projectId);
+      if (currentProject == null) {
+        throw Exception('Project not found');
+      }
+
+      // Add invite accepted update
+      final updatedProject = currentProject.addInviteAcceptedUpdate(
+        currentUserName,
+        user.uid,
+        currentUserName,
+      );
+
+      // Update the project with the new update and collaborator
+      await firestore.collection('projects').doc(projectId).update({
+        'collaborators': FieldValue.arrayUnion([collaborator]),
+        'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Update the invite status
       await firestore
           .collection('pending_requests')
           .doc(currentUserEmail)
           .collection('requests')
           .doc(inviteId)
           .update({'status': 'accepted'});
-      log('[HomeViewModel] acceptInvite: Updated invite status to "accepted".');
 
-      await firestore.collection('projects').doc(projectId).update({
-        'collaborators': FieldValue.arrayUnion([collaborator]),
-      });
-      log('[HomeViewModel] acceptInvite: Added user to project collaborators.');
+      log('[HomeViewModel] acceptInvite: Updated invite status to "accepted" and added user to project.');
 
       String snackbarMessage = 'You have joined the project!';
       log('[HomeViewModel] acceptInvite: Success. SNACKBAR: Success, $snackbarMessage');
@@ -582,11 +633,32 @@ class HomeViewModel extends GetxController {
     }
   }
 
-  Future<void> declineInvite(String inviteId) async {
-    log('[HomeViewModel] declineInvite: Attempting to decline invite $inviteId.');
+  Future<void> declineInvite(String inviteId, String projectId) async {
+    log('[HomeViewModel] declineInvite: Attempting to decline invite $inviteId for project $projectId.');
     try {
-      final currentUserEmail = auth.currentUser?.email ?? '';
-      log('[HomeViewModel] declineInvite: Current user email: $currentUserEmail');
+      final user = auth.currentUser!;
+      final currentUserEmail = user.email ?? '';
+      final currentUserName = user.displayName ?? user.email!.split('@')[0];
+      log('[HomeViewModel] declineInvite: Current user email: $currentUserEmail, name: $currentUserName');
+
+      // First, get the current project to add the update
+      final currentProject = await _projectService.getProject(projectId);
+      if (currentProject != null) {
+        // Add invite declined update
+        final updatedProject = currentProject.addInviteDeclinedUpdate(
+          currentUserName,
+          user.uid,
+          currentUserName,
+        );
+
+        // Update the project with the decline update
+        await firestore.collection('projects').doc(projectId).update({
+          'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // Update the invite status
       await firestore
           .collection('pending_requests')
           .doc(currentUserEmail)
@@ -615,6 +687,7 @@ class HomeViewModel extends GetxController {
     deadlineController.dispose();
     memberNameController.dispose();
     memberEmailController.dispose();
+    memberRoleController.dispose();
     super.onClose();
   }
 }

@@ -15,7 +15,6 @@ class FirestoreChatServices {
 
   User? get user => _auth.currentUser;
 
-  // Check and request permissions based on source
   Future<bool> _requestPermission(ImageSource source) async {
     Permission permission = source == ImageSource.camera ? Permission.camera : Permission.photos;
     final status = await permission.request();
@@ -31,14 +30,11 @@ class FirestoreChatServices {
     }
   }
 
-  // Pick and upload an image or video
   Future<String?> pickAndUploadMedia(String projectId, {required ImageSource source, bool isVideo = false}) async {
     try {
-      // Request appropriate permission
       final hasPermission = await _requestPermission(source);
       if (!hasPermission) return null;
 
-      // Pick image or video
       final pickedFile = isVideo
           ? await _imagePicker.pickVideo(source: source)
           : await _imagePicker.pickImage(
@@ -60,7 +56,6 @@ class FirestoreChatServices {
         return null;
       }
 
-      // Upload file
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_${path.basename(file.path)}';
       final storageRef = _storage
           .ref()
@@ -80,13 +75,12 @@ class FirestoreChatServices {
       final snapshot = await uploadTask;
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
-      print('Error in pickAndUploadMedia: $e'); // Log for debugging
+      print('Error in pickAndUploadMedia: $e');
       Utils.snackBar('Error', 'Failed to upload ${isVideo ? 'video' : 'image'}: $e');
       return null;
     }
   }
 
-  // Check if group chat metadata exists
   Future<bool> groupChatExists(String projectId) async {
     final groupChatRef = _firestore
         .collection('projects')
@@ -97,8 +91,12 @@ class FirestoreChatServices {
     return snapshot.exists;
   }
 
-  // Initialize group chat for a project
-  Future<void> initializeGroupChat(String projectId, List<String> collaboratorIds, List<String> collaboratorEmails) async {
+  Future<void> initializeGroupChat(
+      String projectId,
+      List<String> collaboratorIds,
+      List<String> collaboratorEmails,
+      Map<String, String> collaboratorNames, // ADDED: User names
+      ) async {
     if (user == null) throw Exception('User not authenticated');
 
     final groupChatRef = _firestore
@@ -107,7 +105,6 @@ class FirestoreChatServices {
         .collection('group_chat')
         .doc('metadata');
 
-    // Check if group chat already exists
     final groupChatDoc = await groupChatRef.get();
     if (!groupChatDoc.exists) {
       await groupChatRef.set({
@@ -115,22 +112,12 @@ class FirestoreChatServices {
         'createdAt': FieldValue.serverTimestamp(),
         'members': [user!.uid, ...collaboratorIds],
         'memberEmails': [user!.email, ...collaboratorEmails],
+        'memberNames': { // ADDED: Store user names
+          user!.uid: user!.displayName ?? user!.email?.split('@')[0] ?? 'You',
+          ...collaboratorNames,
+        },
         'creatorId': user!.uid,
       });
-
-      // Update users' project group chat references
-      for (var email in collaboratorEmails) {
-        final userDoc = await _firestore
-            .collection('users')
-            .where('email', isEqualTo: email)
-            .limit(1)
-            .get();
-        if (userDoc.docs.isNotEmpty) {
-          // await _firestore.collection('users').doc(userDoc.docs.first.id).update({
-          //   'groupChats.$projectId': projectId,
-          // });
-        }
-      }
     }
   }
 
@@ -141,11 +128,10 @@ class FirestoreChatServices {
         .collection('group_chat')
         .doc('metadata')
         .collection('messages')
-        .orderBy('sentAt', descending: true)
+        .orderBy('sentAt', descending: false)
         .snapshots();
   }
 
-  // Send a message
   Future<void> sendMessage(
       String projectId,
       String message, {
@@ -158,6 +144,7 @@ class FirestoreChatServices {
     final messageData = {
       'message': message,
       'sentBy': user!.email,
+      'userName': user!.displayName ?? user!.email?.split('@')[0] ?? 'You', // ADDED: User name
       'sentAt': FieldValue.serverTimestamp(),
       'userId': user!.uid,
       'status': 'sent',
@@ -177,7 +164,6 @@ class FirestoreChatServices {
         .add(messageData);
   }
 
-  // Add emoji reaction to a message
   Future<void> addReaction(String projectId, String messageId, String emoji) async {
     await _firestore
         .collection('projects')
@@ -191,7 +177,6 @@ class FirestoreChatServices {
     });
   }
 
-  // Remove emoji reaction from a message
   Future<void> removeReaction(String projectId, String messageId, String emoji) async {
     await _firestore
         .collection('projects')
@@ -205,23 +190,27 @@ class FirestoreChatServices {
     });
   }
 
-  // Set typing status
   Future<void> setTypingStatus(String projectId, bool isTyping) async {
-    await _firestore
+    final typingRef = _firestore
         .collection('projects')
         .doc(projectId)
         .collection('group_chat')
         .doc('metadata')
         .collection('typing')
-        .doc(user!.uid)
-        .set({
-      'isTyping': isTyping,
-      'userName': user!.email,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
+        .doc(user!.uid);
+
+    if (isTyping) {
+      await typingRef.set({
+        'isTyping': true,
+        'userName': user!.displayName ?? user!.email?.split('@')[0] ?? 'User',
+        'timestamp': FieldValue.serverTimestamp(),
+        'userId': user!.uid, // ADDED: for easier querying
+      });
+    } else {
+      await typingRef.delete();
+    }
   }
 
-  // Get typing status
   Stream<QuerySnapshot> getTypingStatus(String projectId) {
     return _firestore
         .collection('projects')
@@ -233,7 +222,6 @@ class FirestoreChatServices {
         .snapshots();
   }
 
-  // Delete a message
   Future<void> deleteMessage(String projectId, String messageId) async {
     await _firestore
         .collection('projects')
@@ -245,7 +233,6 @@ class FirestoreChatServices {
         .delete();
   }
 
-  // Get group chat details
   Stream<DocumentSnapshot> getGroupChatDetails(String projectId) {
     return _firestore
         .collection('projects')

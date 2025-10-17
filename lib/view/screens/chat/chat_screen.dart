@@ -17,14 +17,18 @@ import '../../../services/chat_services/firestor_chat_services.dart';
 
 class ChatScreen extends StatefulWidget {
   final String projectId;
+  final String projectName;
   final List<String> collaboratorIds;
   final List<String> collaboratorEmails;
+  final Map<String, String> collaboratorNames;
 
   const ChatScreen({
     super.key,
     required this.projectId,
+    required this.projectName,
     required this.collaboratorIds,
     required this.collaboratorEmails,
+    required this.collaboratorNames,
   });
 
   @override
@@ -42,6 +46,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isTyping = false;
   bool _isLoading = true;
   bool _groupChatExists = false;
+  List<String> _typingUsers = []; // Track typing users for app bar
 
   @override
   void initState() {
@@ -62,7 +67,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _groupChatExists = false; // Treat error as no group chat
+        _groupChatExists = false;
       });
     }
   }
@@ -76,6 +81,7 @@ class _ChatScreenState extends State<ChatScreen> {
         widget.projectId,
         widget.collaboratorIds,
         widget.collaboratorEmails,
+        widget.collaboratorNames,
       );
       setState(() {
         _groupChatExists = true;
@@ -94,6 +100,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+
+    // Stop typing when sending message
+    if (_isTyping) {
+      _chatServices.setTypingStatus(widget.projectId, false);
+      _isTyping = false;
+    }
+
     try {
       await _chatServices.sendMessage(
         widget.projectId,
@@ -102,6 +115,8 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       _controller.clear();
       setState(() => _replyingTo = null);
+
+      // Scroll to bottom after sending message
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
@@ -144,7 +159,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (_scrollController.hasClients) {
                     _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
+                      0,
                       duration: const Duration(milliseconds: 300),
                       curve: Curves.easeOut,
                     );
@@ -175,7 +190,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (_scrollController.hasClients) {
                     _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
+                      0,
                       duration: const Duration(milliseconds: 300),
                       curve: Curves.easeOut,
                     );
@@ -206,7 +221,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (_scrollController.hasClients) {
                     _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
+                      0,
                       duration: const Duration(milliseconds: 300),
                       curve: Curves.easeOut,
                     );
@@ -237,7 +252,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (_scrollController.hasClients) {
                     _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
+                      0,
                       duration: const Duration(milliseconds: 300),
                       curve: Curves.easeOut,
                     );
@@ -266,7 +281,7 @@ class _ChatScreenState extends State<ChatScreen> {
               setState(() => _replyingTo = {
                 'messageId': message.id,
                 'message': data['message'],
-                'sender': data['sentBy'],
+                'sender': data['userName'] ?? data['sentBy'],
               });
               Navigator.pop(ctx);
             },
@@ -324,6 +339,65 @@ class _ChatScreenState extends State<ChatScreen> {
     return '$hour:$minute $ampm';
   }
 
+  String _getUserName(String userId) {
+    return widget.collaboratorNames[userId] ??
+        _user?.displayName ??
+        _user?.email?.split('@')[0] ??
+        'Unknown User';
+  }
+
+  // Improved typing detection with debouncing
+  void _handleTextChange(String value) {
+    if (value.isNotEmpty && !_isTyping) {
+      _chatServices.setTypingStatus(widget.projectId, true);
+      _isTyping = true;
+
+      // Auto stop typing after 2 seconds of inactivity
+      Future.delayed(Duration(seconds: 2), () {
+        if (_isTyping && _controller.text.isEmpty) {
+          _chatServices.setTypingStatus(widget.projectId, false);
+          _isTyping = false;
+        }
+      });
+    } else if (value.isEmpty && _isTyping) {
+      _chatServices.setTypingStatus(widget.projectId, false);
+      _isTyping = false;
+    }
+  }
+
+  // Check if typing status is recent (within 3 seconds)
+  bool _isUserTypingRecently(Timestamp? timestamp) {
+    if (timestamp == null) return false;
+    final now = DateTime.now();
+    final typingTime = timestamp.toDate();
+    return now.difference(typingTime).inSeconds < 3;
+  }
+
+  // Helper to compare lists
+  bool _listsEqual(List<String> list1, List<String> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (list1[i] != list2[i]) return false;
+    }
+    return true;
+  }
+
+  // Better date header formatting
+  String _getDateHeader(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(Duration(days: 1));
+    final messageDay = DateTime(date.year, date.month, date.day);
+
+    if (messageDay == today) {
+      return "Today";
+    } else if (messageDay == yesterday) {
+      return "Yesterday";
+    } else {
+      return DateFormat('EEEE, MMMM d, yyyy').format(date);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -333,7 +407,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (!_groupChatExists) {
       return Scaffold(
-        appBar: simpleAppBar(title: 'Back'),
+        appBar: simpleAppBar(title: widget.projectName),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -371,7 +445,65 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     return Scaffold(
-      appBar: simpleAppBar(title: 'Back'),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.projectName,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            // Typing indicator in app bar
+            StreamBuilder<QuerySnapshot>(
+              stream: _chatServices.getTypingStatus(widget.projectId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return SizedBox.shrink();
+
+                // FIX: Create as List<String> from the beginning
+                final List<String> typers = snapshot.data!.docs
+                    .where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return data['isTyping'] == true &&
+                      doc.id != _user?.uid &&
+                      _isUserTypingRecently(data['timestamp']);
+                })
+                    .map<String>((doc) => doc['userName'] ?? _getUserName(doc.id)) // Specify return type
+                    .toList();
+
+                // Update typing users state
+                if (!_listsEqual(typers, _typingUsers)) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    setState(() {
+                      _typingUsers = typers; // Now both are List<String>
+                    });
+                  });
+                }
+
+                return AnimatedContainer(
+                  duration: Duration(milliseconds: 200),
+                  height: typers.isNotEmpty ? 16 : 0,
+                  child: Text(
+                    typers.isNotEmpty ? '${typers.join(', ')} ${typers.length > 1 ? 'are' : 'is'} typing...' : '',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.normal,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+        backgroundColor: kSecondaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
       body: Column(
         children: [
           Expanded(child: buildGroupedChatList()),
@@ -445,15 +577,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           vertical: 0,
                         ),
                       ),
-                      onChanged: (value) {
-                        if (value.isNotEmpty && !_isTyping) {
-                          _chatServices.setTypingStatus(widget.projectId, true);
-                          _isTyping = true;
-                        } else if (value.isEmpty && _isTyping) {
-                          _chatServices.setTypingStatus(widget.projectId, false);
-                          _isTyping = false;
-                        }
-                      },
+                      onChanged: _handleTextChange,
                       onEditingComplete: () {
                         _chatServices.setTypingStatus(widget.projectId, false);
                         _isTyping = false;
@@ -493,11 +617,23 @@ class _ChatScreenState extends State<ChatScreen> {
         final List<Widget> chatWidgets = [];
         DateTime? lastDate;
 
-        for (var message in messages) {
+        // Process messages in chronological order (oldest first)
+        final sortedMessages = messages.toList()
+          ..sort((a, b) {
+            final aTime = (a.data() as Map<String, dynamic>)['sentAt'] as Timestamp?;
+            final bTime = (b.data() as Map<String, dynamic>)['sentAt'] as Timestamp?;
+            final aDate = aTime?.toDate() ?? DateTime.now();
+            final bDate = bTime?.toDate() ?? DateTime.now();
+            return aDate.compareTo(bDate); // Ascending order
+          });
+
+        for (var message in sortedMessages) {
           final data = message.data() as Map<String, dynamic>;
           final isUser = data['userId'] == _user?.uid;
           final timestamp = data['sentAt'] as Timestamp?;
           final msgDate = timestamp?.toDate() ?? DateTime.now();
+
+          // Show date header when date changes
           final showDate = lastDate == null || !isSameDay(lastDate, msgDate);
 
           if (showDate) {
@@ -506,17 +642,17 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 12.0),
                 child: Center(
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     decoration: BoxDecoration(
                       color: kFillColor,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      formatDate(msgDate),
+                      _getDateHeader(msgDate),
                       style: TextStyle(
                         color: kQuaternaryColor,
                         fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                        fontSize: 12,
                       ),
                     ),
                   ),
@@ -525,6 +661,12 @@ class _ChatScreenState extends State<ChatScreen> {
             );
             lastDate = msgDate;
           }
+
+          // Get user name instead of email
+          final userName = data['userName'] ?? _getUserName(data['userId']);
+          final replyToUserName = data['replyTo'] != null
+              ? _getUserName(data['replyTo']['userId'] ?? '')
+              : data['replyTo']?['sender'] ?? '';
 
           chatWidgets.add(
             GestureDetector(
@@ -541,7 +683,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        'Replying to ${data['replyTo']['sender']}: ${data['replyTo']['message']}',
+                        'Replying to $replyToUserName: ${data['replyTo']['message']}',
                         style: TextStyle(color: kQuaternaryColor, fontSize: 12),
                       ),
                     ),
@@ -562,11 +704,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (!isUser && data['sentBy'] != null)
+                          if (!isUser && userName != null)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 4.0),
                               child: Text(
-                                data['sentBy'],
+                                userName,
                                 style: TextStyle(
                                   color: kSecondaryColor,
                                   fontWeight: FontWeight.bold,
@@ -575,24 +717,52 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                             ),
                           if (data['type'] == 'image' && data['mediaUrl'] != null)
-                            Image.network(
-                              data['mediaUrl'],
-                              width: 200,
-                              height: 200,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return CircularProgressIndicator();
-                              },
-                              errorBuilder: (context, error, stackTrace) => Icon(Icons.error),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                data['mediaUrl'],
+                                width: 200,
+                                height: 200,
+                                fit: BoxFit.cover,
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Container(
+                                    width: 200,
+                                    height: 200,
+                                    child: Center(child: CircularProgressIndicator()),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: kGreyColor2,
+                                  child: Icon(Icons.error, color: kQuaternaryColor),
+                                ),
+                              ),
                             ),
                           if (data['type'] == 'video' && data['mediaUrl'] != null)
-                            Text(
-                              '[Video] Tap to view',
-                              style: TextStyle(
-                                color: isUser ? kFillColor : kTertiaryColor,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                            GestureDetector(
+                              onTap: () {
+                                Utils.snackBar('Info', 'Video playback coming soon');
+                              },
+                              child: Container(
+                                width: 200,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  color: kGreyColor2,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.play_circle_filled, size: 40, color: kSecondaryColor),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'Tap to play video',
+                                      style: TextStyle(color: kTertiaryColor),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           if (data['message']?.isNotEmpty ?? false)
@@ -604,7 +774,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
-                          if (data['reactions'] != null)
+                          if (data['reactions'] != null && (data['reactions'] as Map).isNotEmpty)
                             Wrap(
                               spacing: 4,
                               children: (data['reactions'] as Map<String, dynamic>)
@@ -687,29 +857,10 @@ class _ChatScreenState extends State<ChatScreen> {
         return ListView(
           controller: _scrollController,
           shrinkWrap: true,
-          reverse: true,
+          reverse: false, // Keep reverse true for proper chat behavior
           physics: BouncingScrollPhysics(),
           padding: AppSizes.DEFAULT,
-          children: [
-            StreamBuilder<QuerySnapshot>(
-              stream: _chatServices.getTypingStatus(widget.projectId),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return SizedBox.shrink();
-                final typers = snapshot.data!.docs
-                    .where((doc) => doc['isTyping'] == true && doc.id != _user?.uid)
-                    .map((doc) => doc['userName'])
-                    .toList();
-                return Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    typers.isNotEmpty ? '${typers.join(', ')} ${typers.length > 1 ? 'are' : 'is'} typing...' : '',
-                    style: TextStyle(fontSize: 12, color: kQuaternaryColor),
-                  ),
-                );
-              },
-            ),
-            ...chatWidgets,
-          ],
+          children: chatWidgets,
         );
       },
     );
@@ -717,13 +868,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  String formatDate(DateTime date) {
-    final now = DateTime.now();
-    if (isSameDay(date, now)) return "Today";
-    if (isSameDay(date, now.subtract(Duration(days: 1)))) return "Yesterday";
-    return DateFormat('MMM d, yyyy').format(date);
   }
 
   @override

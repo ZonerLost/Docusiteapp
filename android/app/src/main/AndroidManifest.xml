@@ -27,7 +27,7 @@
 
     <application
         android:name="${applicationName}"
-        android:label="docu_site"
+        android:label="DocuSite"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">
 
