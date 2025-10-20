@@ -17,6 +17,12 @@
 	<key>FirebaseMessagingAutoInitEnabled</key>
 	<string>NO</string>
 
+	<key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>https</string>
+        <string>http</string>
+    </array>
+
 	<key>CFBundleDisplayName</key>
 	<string>DocuSite</string>
 

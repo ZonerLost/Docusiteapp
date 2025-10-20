@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:docu_site/utils/utils.dart';
@@ -16,20 +17,29 @@ class FirestoreChatServices {
   User? get user => _auth.currentUser;
 
   Future<bool> _requestPermission(ImageSource source) async {
-    Permission permission = source == ImageSource.camera ? Permission.camera : Permission.photos;
-    final status = await permission.request();
-    if (status.isGranted) {
+    try {
+      if (source == ImageSource.camera) {
+        // For camera, request camera permission
+        final status = await Permission.camera.request();
+        return status.isGranted;
+      } else {
+        // For gallery, request photos permission on iOS, storage on Android
+        if (Platform.isIOS) {
+          final status = await Permission.photos.request();
+          return status.isGranted;
+        } else {
+          final status = await Permission.storage.request();
+          return status.isGranted;
+        }
+      }
+    } catch (e) {
+      print('Permission error: $e');
+      // If permission request fails, try to pick image anyway
       return true;
-    } else if (status.isPermanentlyDenied) {
-      Utils.snackBar('Error', 'Permission permanently denied. Please enable it in settings.');
-      await openAppSettings();
-      return false;
-    } else {
-      Utils.snackBar('Error', 'Permission denied.');
-      return false;
     }
   }
 
+  // Enhanced media picker with better error handling
   Future<String?> pickAndUploadMedia(String projectId, {required ImageSource source, bool isVideo = false}) async {
     try {
       final hasPermission = await _requestPermission(source);
@@ -51,8 +61,11 @@ class FirestoreChatServices {
 
       final file = File(pickedFile.path);
       final fileSizeMB = (await file.length()) / (1024 * 1024);
-      if (fileSizeMB > 100) {
-        Utils.snackBar('Error', '${isVideo ? 'Video' : 'Image'} size exceeds 100 MB limit.');
+
+      // Set reasonable file size limits
+      final maxSize = isVideo ? 100 : 20; // 100MB for videos, 20MB for images
+      if (fileSizeMB > maxSize) {
+        Utils.snackBar('Error', '${isVideo ? 'Video' : 'Image'} size exceeds ${maxSize} MB limit.');
         return null;
       }
 
@@ -61,6 +74,7 @@ class FirestoreChatServices {
           .ref()
           .child('project_chats')
           .child(projectId)
+          .child('media')
           .child(fileName);
 
       final contentType = isVideo
@@ -72,15 +86,111 @@ class FirestoreChatServices {
         SettableMetadata(contentType: contentType),
       );
 
+      // Show upload progress
+      uploadTask.snapshotEvents.listen((taskSnapshot) {
+        final progress = (taskSnapshot.bytesTransferred / taskSnapshot.totalBytes) * 100;
+        print('Upload progress: ${progress.toStringAsFixed(2)}%');
+      });
+
       final snapshot = await uploadTask;
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
       print('Error in pickAndUploadMedia: $e');
-      Utils.snackBar('Error', 'Failed to upload ${isVideo ? 'video' : 'image'}: $e');
+      Utils.snackBar('Error', 'Failed to upload ${isVideo ? 'video' : 'image'}: ${e.toString()}');
       return null;
     }
   }
 
+  // NEW: File attachment upload method
+  Future<String?> uploadFileAttachment(String projectId, PlatformFile platformFile) async {
+    try {
+      final file = File(platformFile.path!);
+      final fileSizeMB = (await file.length()) / (1024 * 1024);
+
+      // Set file size limit (50MB for files)
+      if (fileSizeMB > 50) {
+        Utils.snackBar('Error', 'File size exceeds 50 MB limit.');
+        return null;
+      }
+
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${platformFile.name}';
+      final storageRef = _storage
+          .ref()
+          .child('project_chats')
+          .child(projectId)
+          .child('attachments')
+          .child(fileName);
+
+      // Determine content type based on file extension
+      final extension = path.extension(platformFile.name).toLowerCase();
+      final contentType = _getContentType(extension);
+
+      final uploadTask = storageRef.putFile(
+        file,
+        SettableMetadata(contentType: contentType),
+      );
+
+      // Show upload progress
+      uploadTask.snapshotEvents.listen((taskSnapshot) {
+        final progress = (taskSnapshot.bytesTransferred / taskSnapshot.totalBytes) * 100;
+        print('File upload progress: ${progress.toStringAsFixed(2)}%');
+      });
+
+      final snapshot = await uploadTask;
+      return await snapshot.ref.getDownloadURL();
+    } catch (e) {
+      print('Error in uploadFileAttachment: $e');
+      Utils.snackBar('Error', 'Failed to upload file: ${e.toString()}');
+      return null;
+    }
+  }
+
+  // Helper method to determine content type
+  String _getContentType(String extension) {
+    switch (extension) {
+      case '.pdf':
+        return 'application/pdf';
+      case '.doc':
+      case '.docx':
+        return 'application/msword';
+      case '.xls':
+      case '.xlsx':
+        return 'application/vnd.ms-excel';
+      case '.ppt':
+      case '.pptx':
+        return 'application/vnd.ms-powerpoint';
+      case '.zip':
+        return 'application/zip';
+      case '.txt':
+        return 'text/plain';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  // NEW: Pick files using file_picker
+  Future<List<PlatformFile>?> pickFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: [
+          'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+          'txt', 'zip', 'jpg', 'jpeg', 'png', 'gif'
+        ],
+      );
+
+      if (result == null || result.files.isEmpty) return null;
+
+      return result.files;
+    } catch (e) {
+      print('Error picking files: $e');
+      Utils.snackBar('Error', 'Failed to pick files: ${e.toString()}');
+      return null;
+    }
+  }
+
+  // Rest of your existing methods remain the same...
   Future<bool> groupChatExists(String projectId) async {
     final groupChatRef = _firestore
         .collection('projects')
@@ -95,7 +205,7 @@ class FirestoreChatServices {
       String projectId,
       List<String> collaboratorIds,
       List<String> collaboratorEmails,
-      Map<String, String> collaboratorNames, // ADDED: User names
+      Map<String, String> collaboratorNames,
       ) async {
     if (user == null) throw Exception('User not authenticated');
 
@@ -112,7 +222,7 @@ class FirestoreChatServices {
         'createdAt': FieldValue.serverTimestamp(),
         'members': [user!.uid, ...collaboratorIds],
         'memberEmails': [user!.email, ...collaboratorEmails],
-        'memberNames': { // ADDED: Store user names
+        'memberNames': {
           user!.uid: user!.displayName ?? user!.email?.split('@')[0] ?? 'You',
           ...collaboratorNames,
         },
@@ -138,13 +248,14 @@ class FirestoreChatServices {
         String? mediaUrl,
         String? messageType,
         Map<String, dynamic>? replyTo,
+        List<Map<String, dynamic>>? attachments, // NEW: Support for multiple attachments
       }) async {
     if (user == null) throw Exception('User not authenticated');
 
     final messageData = {
       'message': message,
       'sentBy': user!.email,
-      'userName': user!.displayName ?? user!.email?.split('@')[0] ?? 'You', // ADDED: User name
+      'userName': user!.displayName ?? user!.email?.split('@')[0] ?? 'You',
       'sentAt': FieldValue.serverTimestamp(),
       'userId': user!.uid,
       'status': 'sent',
@@ -153,6 +264,7 @@ class FirestoreChatServices {
       'mediaUrl': mediaUrl,
       'replyTo': replyTo,
       'photoUrl': user!.photoURL,
+      'attachments': attachments, // NEW: Include attachments in message
     };
 
     await _firestore
@@ -204,7 +316,7 @@ class FirestoreChatServices {
         'isTyping': true,
         'userName': user!.displayName ?? user!.email?.split('@')[0] ?? 'User',
         'timestamp': FieldValue.serverTimestamp(),
-        'userId': user!.uid, // ADDED: for easier querying
+        'userId': user!.uid,
       });
     } else {
       await typingRef.delete();
