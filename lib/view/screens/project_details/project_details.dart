@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_fonts.dart';
@@ -24,6 +26,9 @@ import '../../../models/project/project_file.dart';
 import '../../../view_model/home/home_view_model.dart';
 import '../../widget/invite_member_dialog.dart';
 import '../home/invite_to_project_dialog.dart';
+import 'package:crypto/crypto.dart';
+
+import 'edit_project.dart';
 
 class ProjectDetails extends StatelessWidget {
   final String projectId;
@@ -119,7 +124,14 @@ class ProjectDetails extends StatelessWidget {
                               padding: EdgeInsets.symmetric(horizontal: 10),
                               value: 'edit',
                               height: 25,
-                              onTap: controller.editProject,
+                              onTap: () {
+                                // Only allow project owner to edit project
+                                if (!controller.isCurrentUserOwner) {
+                                  Utils.snackBar('Error', 'Only project owner can edit project.');
+                                  return;
+                                }
+                                Get.to(() => EditProjectScreen(projectId: controller.projectId));
+                              },
                               child: MyText(
                                 text: 'Edit Project',
                                 size: 14,
@@ -131,6 +143,11 @@ class ProjectDetails extends StatelessWidget {
                               value: 'delete',
                               height: 25,
                               onTap: () {
+                                // Only allow project owner to delete project
+                                if (!controller.isCurrentUserOwner) {
+                                  Utils.snackBar('Error', 'Only project owner can delete project.');
+                                  return;
+                                }
                                 // Add a small delay to let the popup menu close
                                 Future.delayed(Duration(milliseconds: 300), () {
                                   controller.deleteProject();
@@ -194,12 +211,18 @@ class ProjectDetails extends StatelessWidget {
                               SizedBox(
                                 width: 118,
                                 child: MyButton(
-                                  buttonText: 'Group Chat',
+                                  buttonText: 'Project Chat',
                                   onTap: () {
+                                    print(project.title);
                                     Get.to(() => ChatScreen(
                                       projectId: project.id,
+                                      projectName: project.title,
                                       collaboratorIds: project.collaborators.map((c) => c.uid).toList(),
                                       collaboratorEmails: project.collaborators.map((c) => c.email).toList(),
+                                      collaboratorNames: {
+                                        for (var c in project.collaborators) c.uid: c.name,
+                                      },
+
                                     ));
                                   },
                                   textSize: 14,
@@ -449,6 +472,7 @@ class _FilesAndDocuments extends StatelessWidget {
                       onTap: () {
                         Get.to(() => PdfDetails());
                       },
+
                       child: Container(
                         margin: EdgeInsets.only(bottom: 8),
                         padding: EdgeInsets.all(12),
@@ -752,16 +776,17 @@ class _AddNewPdf extends StatefulWidget {
 }
 
 class _AddNewPdfState extends State<_AddNewPdf> {
-  String selectedPdfType = 'STRUCTURAL';
+  String selectedPdfType = 'Structural';
   final List<String> pdfCategories = [
-    'STRUCTURAL',
-    'MVP',
-    'Architectural',
-    'Electrical',
-    'Others',
+    '🏛 Structural',
+    '🧱 Architectural',
+    '⚙️ MEP',
+    '🪑 Interior',
+    '📁 Others',
   ];
   PlatformFile? selectedFile;
   String? fileName;
+  bool _isUploading = false;
 
   @override
   void initState() {
@@ -783,7 +808,6 @@ class _AddNewPdfState extends State<_AddNewPdf> {
             selectedFile = file;
             fileName = file.name;
           });
-          Utils.snackBar('Success', 'Selected: ${file.name}');
         } else {
           Utils.snackBar('Error', 'Could not access file path.');
         }
@@ -791,6 +815,34 @@ class _AddNewPdfState extends State<_AddNewPdf> {
     } catch (e) {
       print('File picker error: $e');
       Utils.snackBar('Error', 'Failed to pick file: ${e.toString()}');
+    }
+  }
+
+  Future<void> _uploadFile() async {
+    if (selectedFile == null) return;
+
+    setState(() {
+      _isUploading = true;
+    });
+
+    try {
+      final success = await widget.controller.addNewPdf(
+        selectedPdfType,
+        selectedFile!.path!,
+        fileName!,
+      );
+
+      if (success) {
+        Utils.snackBar('Success', 'File "$fileName" uploaded successfully.');
+      } else {
+        Utils.snackBar('Error', 'Failed to upload file "$fileName".');
+      }
+    } catch (e) {
+      Utils.snackBar('Error', 'Upload failed: ${e.toString()}');
+    } finally {
+      setState(() {
+        _isUploading = false;
+      });
     }
   }
 
@@ -842,10 +894,18 @@ class _AddNewPdfState extends State<_AddNewPdf> {
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: kBorderColor),
                     ),
-                    child: MyText(
-                      text: fileName ?? 'Tap to select a PDF file',
-                      size: 14,
-                      color: fileName != null ? kTertiaryColor : kQuaternaryColor,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: MyText(
+                            text: fileName ?? 'Tap to select a PDF file',
+                            size: 14,
+                            color: fileName != null ? kTertiaryColor : kQuaternaryColor,
+                          ),
+                        ),
+                        if (fileName != null)
+                          Icon(Icons.check_circle, color: kGreenColor, size: 16),
+                      ],
                     ),
                   ),
                 ),
@@ -865,28 +925,12 @@ class _AddNewPdfState extends State<_AddNewPdf> {
             ),
           ),
           MyButton(
-            buttonText: 'Upload & Add',
-            isLoading: widget.controller.isUploadingFile.value,
-            onTap: selectedFile == null
+            buttonText: _isUploading ? 'Uploading...' : 'Upload & Add',
+            isLoading: _isUploading,
+            onTap: selectedFile == null || _isUploading
                 ? null
-                : () async {
-              // Close the bottom sheet immediately
-              Get.back();
-
-              // Perform upload
-              final success = await widget.controller.addNewPdf(
-                selectedPdfType,
-                selectedFile!.path!,
-                fileName!,
-              );
-
-              // Show snackbar based on result
-              if (success) {
-                Utils.snackBar('Success', 'File "$fileName" uploaded successfully.');
-              }
-            },
+                : _uploadFile,
           ),
-
         ],
       ),
     );

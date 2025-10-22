@@ -16,6 +16,7 @@ class MyTextField extends StatefulWidget {
     this.suffix,
     this.isReadOnly,
     this.onTap,
+    this.keyboardType,
   }) : super(key: key);
 
   String? labelText, hintText;
@@ -26,6 +27,7 @@ class MyTextField extends StatefulWidget {
   int? maxLines;
   Widget? suffix;
   final VoidCallback? onTap;
+  final TextInputType? keyboardType;
 
   @override
   State<MyTextField> createState() => _MyTextFieldState();
@@ -42,12 +44,8 @@ class _MyTextFieldState extends State<MyTextField> {
     _focusNode = FocusNode();
     _focusNode.addListener(() => setState(() {}));
 
-    if (widget.controller == null) {
-      _effectiveController = TextEditingController();
-      _createdController = true;
-    } else {
-      _effectiveController = widget.controller!;
-    }
+    _effectiveController = widget.controller ?? TextEditingController();
+    _createdController = widget.controller == null;
     _effectiveController.addListener(() => setState(() {}));
   }
 
@@ -62,78 +60,78 @@ class _MyTextFieldState extends State<MyTextField> {
   Widget build(BuildContext context) {
     final bool isFocused = _focusNode.hasFocus;
     final bool hasValue = _effectiveController.text.isNotEmpty;
-    final bool showField = isFocused || hasValue;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () {
-        _focusNode.requestFocus();
-        if (widget.onTap != null) widget.onTap!();
-      },
-      child: Focus(
-        focusNode: _focusNode,
-        child: Container(
-          margin: EdgeInsets.only(bottom: widget.marginBottom!),
-          decoration: BoxDecoration(
-            color: kFillColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(width: 1.0, color: kInputBorderColor),
-          ),
-          child: AnimatedPadding(
-            padding: EdgeInsets.fromLTRB(14, 12, 0, 12),
-            duration: Duration(milliseconds: 180),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      MyText(
-                        text: widget.labelText ?? '',
-                        size: 12,
-                        color: isFocused ? kQuaternaryColor : kTertiaryColor,
-                        weight: FontWeight.w500,
+    return Container(
+      margin: EdgeInsets.only(bottom: widget.marginBottom!),
+      decoration: BoxDecoration(
+        color: kFillColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          width: 1.0,
+          color: isFocused ? kSecondaryColor : kInputBorderColor,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 0, 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Label
+                  MyText(
+                    text: widget.labelText ?? '',
+                    size: 12,
+                    color: isFocused ? kSecondaryColor : kQuaternaryColor,
+                    weight: FontWeight.w500,
+                  ),
+                  // Text Field
+                  SizedBox(
+                    height: 30,
+                    child: TextFormField(
+                      focusNode: _focusNode,
+                      controller: _effectiveController,
+                      onChanged: widget.onChanged,
+                      onTap: widget.onTap,
+                      readOnly: widget.isReadOnly ?? false,
+                      obscureText: widget.isObSecure!,
+                      obscuringCharacter: '*',
+                      maxLines: widget.maxLines,
+                      keyboardType: widget.keyboardType,
+                      textInputAction: TextInputAction.next,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: kTertiaryColor,
                       ),
-                      if (showField)
-                        SizedBox(
-                          height: 30,
-                          child: TextFormField(
-                            onTap: widget.onTap,
-                            cursorColor: kTertiaryColor,
-                            maxLines: widget.maxLines,
-                            readOnly: widget.isReadOnly ?? false,
-                            controller: _effectiveController,
-                            onChanged: widget.onChanged,
-                            textInputAction: TextInputAction.next,
-                            obscureText: widget.isObSecure!,
-                            obscuringCharacter: '*',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: kTertiaryColor,
-                            ),
-                            decoration: InputDecoration(
-                              contentPadding: EdgeInsets.zero,
-                              hintText: widget.hintText,
-                              hintStyle: TextStyle(
-                                fontSize: 16,
-                                color: kTertiaryColor.withValues(alpha: 0.4),
-                              ),
-                              border: InputBorder.none,
-                            ),
-                          ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: widget.hintText,
+                        hintStyle: TextStyle(
+                          fontSize: 16,
+                          color: kTertiaryColor.withValues(alpha: 0.4),
+                          fontWeight: FontWeight.w500,
                         ),
-                    ],
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                      ),
+                    ),
                   ),
-                ),
-                if (widget.suffix != null)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 14),
-                    child: widget.suffix!,
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
+            if (widget.suffix != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: widget.suffix!,
+              ),
+          ],
         ),
       ),
     );
@@ -155,6 +153,9 @@ class SimpleTextField extends StatelessWidget {
     this.suffix,
     this.isReadOnly,
     this.onTap,
+    this.keyboardType,
+    this.errorText, // New parameter for error message
+    this.isRequired = false, // New parameter to show required indicator
   }) : super(key: key);
 
   final String? labelText, hintText;
@@ -166,6 +167,9 @@ class SimpleTextField extends StatelessWidget {
   final double? labelSize;
   final Widget? prefix, suffix;
   final VoidCallback? onTap;
+  final TextInputType? keyboardType;
+  final String? errorText; // Error message to display
+  final bool isRequired; // Whether to show required indicator
 
   @override
   Widget build(BuildContext context) {
@@ -175,26 +179,41 @@ class SimpleTextField extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (labelText != null)
-            MyText(
-              text: labelText ?? '',
-              paddingBottom: 4,
-              size: 14,
-              weight: FontWeight.w500,
-              color: kQuaternaryColor,
+            Row(
+              children: [
+                Expanded(
+                  child: MyText(
+                    text: labelText ?? '',
+                    paddingBottom: 4,
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: kQuaternaryColor,
+                  ),
+                ),
+                if (isRequired)
+                  MyText(
+                    text: '*',
+                    paddingBottom: 4,
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: Colors.red,
+                  ),
+              ],
             ),
           TextFormField(
+            controller: controller,
+            onChanged: onChanged,
             onTap: onTap,
+            readOnly: isReadOnly ?? false,
+            obscureText: isObSecure!,
+            obscuringCharacter: '*',
+            maxLines: maxLines,
+            keyboardType: keyboardType,
+            textInputAction: TextInputAction.next,
             textAlignVertical: prefix != null || suffix != null
                 ? TextAlignVertical.center
                 : null,
             cursorColor: kTertiaryColor,
-            maxLines: maxLines,
-            readOnly: isReadOnly ?? false,
-            controller: controller,
-            onChanged: onChanged,
-            textInputAction: TextInputAction.next,
-            obscureText: isObSecure!,
-            obscuringCharacter: '*',
             style: TextStyle(
               fontSize: 16,
               color: kTertiaryColor,
@@ -212,31 +231,56 @@ class SimpleTextField extends StatelessWidget {
               hintText: hintText,
               hintStyle: TextStyle(
                 fontSize: 16,
-                color: kTertiaryColor,
+                color: kTertiaryColor.withOpacity(0.6),
                 fontWeight: FontWeight.w500,
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(
+                  color: errorText != null ? Colors.red : Colors.transparent,
+                  width: 1.0,
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(
+                  color: errorText != null ? Colors.red : Colors.transparent,
+                  width: 1.0,
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(
+                  color: errorText != null ? Colors.red : kSecondaryColor,
+                  width: 1.0,
+                ),
               ),
               errorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: const BorderSide(
+                  color: Colors.red,
+                  width: 1.0,
+                ),
               ),
               focusedErrorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: const BorderSide(
+                  color: Colors.red,
+                  width: 1.0,
+                ),
               ),
             ),
           ),
+          // Error message below the text field
+          if (errorText != null) ...[
+            const SizedBox(height: 4),
+            MyText(
+              text: errorText!,
+              size: 12,
+              color: Colors.red,
+              paddingBottom: 8,
+            ),
+          ],
         ],
       ),
     );

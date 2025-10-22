@@ -7,10 +7,10 @@ import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import '../../../view_model/home/home_view_model.dart';
+import '../../../controllers/home/home_controller.dart';
 
 class ProjectInvites extends StatelessWidget {
-  final HomeViewModel _viewModel = Get.find<HomeViewModel>();
+  final HomeController _viewModel = Get.find<HomeController>();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
@@ -124,7 +124,7 @@ class ProjectInvites extends StatelessWidget {
                                 height: 40,
                                 textSize: 14,
                                 buttonText: 'Decline',
-                                onTap: () => _viewModel.declineInvite(inviteId),
+                                onTap: () => _viewModel.declineInvite(inviteId,projectId),
                               ),
                             ),
                             Expanded(
@@ -220,13 +220,13 @@ class ProjectInvites extends StatelessWidget {
                   height: 40,
                   textSize: 14,
                   buttonText: 'Decline',
-                  onTap: () => _viewModel.declineInvite(projectId),
+                  onTap: () => _viewModel.declineInvite(projectId,projectId),
                 ),
               ),
               Expanded(
                 child: MyButton(
                   buttonText: 'Remove',
-                  onTap: () => _viewModel.declineInvite(projectId),
+                  onTap: () => _viewModel.declineInvite(projectId,projectId),
                   height: 40,
                   textSize: 14,
                   bgColor: kRedColor,

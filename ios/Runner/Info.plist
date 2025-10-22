@@ -17,8 +17,14 @@
 	<key>FirebaseMessagingAutoInitEnabled</key>
 	<string>NO</string>
 
+	<key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>https</string>
+        <string>http</string>
+    </array>
+
 	<key>CFBundleDisplayName</key>
-	<string>Docu Site</string>
+	<string>DocuSite</string>
 
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
@@ -30,7 +36,7 @@
 	<string>6.0</string>
 
 	<key>CFBundleName</key>
-	<string>docu_site</string>
+	<string>DocuSite</string>
 
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>

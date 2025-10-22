@@ -12,19 +12,25 @@ import 'package:flutter_emoji/flutter_emoji.dart';
 import 'package:get/Get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:math';
 import '../../../main.dart';
 import '../../../services/chat_services/firestor_chat_services.dart';
 
 class ChatScreen extends StatefulWidget {
   final String projectId;
+  final String projectName;
   final List<String> collaboratorIds;
   final List<String> collaboratorEmails;
+  final Map<String, String> collaboratorNames;
 
   const ChatScreen({
     super.key,
     required this.projectId,
+    required this.projectName,
     required this.collaboratorIds,
     required this.collaboratorEmails,
+    required this.collaboratorNames,
   });
 
   @override
@@ -42,6 +48,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isTyping = false;
   bool _isLoading = true;
   bool _groupChatExists = false;
+  List<String> _typingUsers = [];
+  List<Map<String, dynamic>> _pendingAttachments = [];
 
   @override
   void initState() {
@@ -62,7 +70,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _groupChatExists = false; // Treat error as no group chat
+        _groupChatExists = false;
       });
     }
   }
@@ -76,6 +84,7 @@ class _ChatScreenState extends State<ChatScreen> {
         widget.projectId,
         widget.collaboratorIds,
         widget.collaboratorEmails,
+        widget.collaboratorNames,
       );
       setState(() {
         _groupChatExists = true;
@@ -93,162 +102,271 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _pendingAttachments.isEmpty) return;
+
+    // Stop typing when sending message
+    if (_isTyping) {
+      _chatServices.setTypingStatus(widget.projectId, false);
+      _isTyping = false;
+    }
+
     try {
-      await _chatServices.sendMessage(
-        widget.projectId,
-        text,
-        replyTo: _replyingTo,
-      );
+      // If we have pending attachments, send them first
+      if (_pendingAttachments.isNotEmpty) {
+        await _sendPendingAttachments(text);
+      } else {
+        // Send regular text message
+        await _chatServices.sendMessage(
+          widget.projectId,
+          text,
+          replyTo: _replyingTo,
+        );
+      }
+
       _controller.clear();
       setState(() => _replyingTo = null);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
+      _scrollToBottom();
     } catch (e) {
       Utils.snackBar('Error', 'Failed to send message: $e');
     }
   }
 
+  Future<void> _sendPendingAttachments(String text) async {
+    final List<Map<String, dynamic>> attachments = [];
+
+    for (final attachment in _pendingAttachments) {
+      if (attachment['url'] != null) {
+        attachments.add({
+          'name': attachment['name'],
+          'url': attachment['url'],
+          'size': attachment['size'],
+          'type': attachment['extension'],
+        });
+      }
+    }
+
+    if (attachments.isNotEmpty) {
+      await _chatServices.sendMessage(
+        widget.projectId,
+        text.isNotEmpty ? text : 'Sent ${attachments.length} file(s)',
+        messageType: attachments.length == 1 ? 'file' : 'files',
+        attachments: attachments,
+        replyTo: _replyingTo,
+      );
+
+      // Clear pending attachments after sending
+      setState(() {
+        _pendingAttachments.clear();
+      });
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   void _showMediaPicker() {
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.photo_library),
-            title: const Text('Image from Gallery'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              final downloadUrl = await _chatServices.pickAndUploadMedia(
-                widget.projectId,
-                source: ImageSource.gallery,
-                isVideo: false,
-              );
-              if (downloadUrl != null) {
-                await _chatServices.sendMessage(
-                  widget.projectId,
-                  '',
-                  messageType: 'image',
-                  mediaUrl: downloadUrl,
-                  replyTo: _replyingTo,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // --- CAMERA OPTION ---
+            ListTile(
+              leading: const Icon(Icons.photo_camera, color: Colors.blueAccent),
+              title: const Text('Camera (Photo / Video)'),
+              onTap: () async {
+                Navigator.pop(ctx);
+
+                // nested bottom sheet
+                final type = await showModalBottomSheet<String>(
+                  context: context,
+                  builder: (ctx2) => SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.camera_alt),
+                          title: const Text('Take Photo'),
+                          onTap: () => Navigator.pop(ctx2, 'photo'),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.videocam),
+                          title: const Text('Record Video'),
+                          onTap: () => Navigator.pop(ctx2, 'video'),
+                        ),
+                      ],
+                    ),
+                  ),
                 );
-                setState(() => _replyingTo = null);
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (_scrollController.hasClients) {
-                    _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
+
+                if (type == 'photo' || type == 'video') {
+                  final isVideo = type == 'video';
+                  final downloadUrl = await _chatServices.pickAndUploadMedia(
+                    widget.projectId,
+                    source: ImageSource.camera,
+                    isVideo: isVideo,
+                  );
+
+                  if (downloadUrl != null) {
+                    await _chatServices.sendMessage(
+                      widget.projectId,
+                      '',
+                      messageType: isVideo ? 'video' : 'image',
+                      mediaUrl: downloadUrl,
+                      replyTo: _replyingTo,
                     );
+                    setState(() => _replyingTo = null);
+                    _scrollToBottom();
                   }
-                });
-              }
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.photo_camera),
-            title: const Text('Image from Camera'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              final downloadUrl = await _chatServices.pickAndUploadMedia(
-                widget.projectId,
-                source: ImageSource.camera,
-                isVideo: false,
-              );
-              if (downloadUrl != null) {
-                await _chatServices.sendMessage(
-                  widget.projectId,
-                  '',
-                  messageType: 'image',
-                  mediaUrl: downloadUrl,
-                  replyTo: _replyingTo,
+                }
+              },
+            ),
+
+            // --- GALLERY OPTION ---
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.green),
+              title: const Text('Gallery (Photo / Video)'),
+              onTap: () async {
+                Navigator.pop(ctx);
+
+                final type = await showModalBottomSheet<String>(
+                  context: context,
+                  builder: (ctx2) => SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.photo),
+                          title: const Text('Pick Photo'),
+                          onTap: () => Navigator.pop(ctx2, 'photo'),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.videocam),
+                          title: const Text('Pick Video'),
+                          onTap: () => Navigator.pop(ctx2, 'video'),
+                        ),
+                      ],
+                    ),
+                  ),
                 );
-                setState(() => _replyingTo = null);
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (_scrollController.hasClients) {
-                    _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
+
+                if (type == 'photo' || type == 'video') {
+                  final isVideo = type == 'video';
+                  final downloadUrl = await _chatServices.pickAndUploadMedia(
+                    widget.projectId,
+                    source: ImageSource.gallery,
+                    isVideo: isVideo,
+                  );
+
+                  if (downloadUrl != null) {
+                    await _chatServices.sendMessage(
+                      widget.projectId,
+                      '',
+                      messageType: isVideo ? 'video' : 'image',
+                      mediaUrl: downloadUrl,
+                      replyTo: _replyingTo,
                     );
+                    setState(() => _replyingTo = null);
+                    _scrollToBottom();
                   }
-                });
-              }
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.videocam),
-            title: const Text('Video from Gallery'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              final downloadUrl = await _chatServices.pickAndUploadMedia(
-                widget.projectId,
-                source: ImageSource.gallery,
-                isVideo: true,
-              );
-              if (downloadUrl != null) {
-                await _chatServices.sendMessage(
-                  widget.projectId,
-                  '',
-                  messageType: 'video',
-                  mediaUrl: downloadUrl,
-                  replyTo: _replyingTo,
-                );
-                setState(() => _replyingTo = null);
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (_scrollController.hasClients) {
-                    _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  }
-                });
-              }
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.videocam),
-            title: const Text('Video from Camera'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              final downloadUrl = await _chatServices.pickAndUploadMedia(
-                widget.projectId,
-                source: ImageSource.camera,
-                isVideo: true,
-              );
-              if (downloadUrl != null) {
-                await _chatServices.sendMessage(
-                  widget.projectId,
-                  '',
-                  messageType: 'video',
-                  mediaUrl: downloadUrl,
-                  replyTo: _replyingTo,
-                );
-                setState(() => _replyingTo = null);
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (_scrollController.hasClients) {
-                    _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  }
-                });
-              }
-            },
-          ),
-        ],
+                }
+              },
+            ),
+
+            // --- FILES OPTION ---
+            ListTile(
+              leading: const Icon(Icons.attach_file, color: Colors.deepPurple),
+              title: const Text('Attach Files'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _pickAndSendFiles();
+              },
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+
+  Future<void> _pickAndSendFiles() async {
+    try {
+      final files = await _chatServices.pickFiles();
+      if (files == null || files.isEmpty) return;
+
+      // Show uploading indicator
+      setState(() {
+        _pendingAttachments = files.map((file) => {
+          'name': file.name,
+          'size': file.size,
+          'extension': file.extension ?? 'file',
+          'uploading': true,
+          'url': null,
+        }).toList();
+      });
+
+      // Upload files one by one
+      for (int i = 0; i < files.length; i++) {
+        final file = files[i];
+        final downloadUrl = await _chatServices.uploadFileAttachment(widget.projectId, file);
+
+        if (downloadUrl != null) {
+          setState(() {
+            _pendingAttachments[i] = {
+              'name': file.name,
+              'size': file.size,
+              'extension': file.extension ?? 'file',
+              'uploading': false,
+              'url': downloadUrl,
+            };
+          });
+        } else {
+          setState(() {
+            _pendingAttachments[i] = {
+              'name': file.name,
+              'size': file.size,
+              'extension': file.extension ?? 'file',
+              'uploading': false,
+              'url': null,
+              'error': true,
+            };
+          });
+        }
+      }
+
+      // Auto-send if all uploads are complete
+      final allUploaded = _pendingAttachments.every((att) => att['url'] != null);
+      if (allUploaded) {
+        await _sendPendingAttachments(_controller.text.trim());
+        _controller.clear();
+        _scrollToBottom();
+      }
+
+    } catch (e) {
+      setState(() {
+        _pendingAttachments.clear();
+      });
+      Utils.snackBar('Error', 'Failed to send files: ${e.toString()}');
+    }
+  }
+
+  void _removePendingAttachment(int index) {
+    setState(() {
+      _pendingAttachments.removeAt(index);
+    });
   }
 
   void _showMessageOptions(DocumentSnapshot message) {
@@ -266,7 +384,7 @@ class _ChatScreenState extends State<ChatScreen> {
               setState(() => _replyingTo = {
                 'messageId': message.id,
                 'message': data['message'],
-                'sender': data['sentBy'],
+                'sender': data['userName'] ?? data['sentBy'],
               });
               Navigator.pop(ctx);
             },
@@ -324,6 +442,166 @@ class _ChatScreenState extends State<ChatScreen> {
     return '$hour:$minute $ampm';
   }
 
+  String _getUserName(String userId) {
+    return widget.collaboratorNames[userId] ??
+        _user?.displayName ??
+        _user?.email?.split('@')[0] ??
+        'Unknown User';
+  }
+
+  void _handleTextChange(String value) {
+    if (value.isNotEmpty && !_isTyping) {
+      _chatServices.setTypingStatus(widget.projectId, true);
+      _isTyping = true;
+
+      Future.delayed(Duration(seconds: 2), () {
+        if (_isTyping && _controller.text.isEmpty) {
+          _chatServices.setTypingStatus(widget.projectId, false);
+          _isTyping = false;
+        }
+      });
+    } else if (value.isEmpty && _isTyping) {
+      _chatServices.setTypingStatus(widget.projectId, false);
+      _isTyping = false;
+    }
+  }
+
+  bool _isUserTypingRecently(Timestamp? timestamp) {
+    if (timestamp == null) return false;
+    final now = DateTime.now();
+    final typingTime = timestamp.toDate();
+    return now.difference(typingTime).inSeconds < 3;
+  }
+
+  bool _listsEqual(List<String> list1, List<String> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (list1[i] != list2[i]) return false;
+    }
+    return true;
+  }
+
+  String _getDateHeader(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(Duration(days: 1));
+    final messageDay = DateTime(date.year, date.month, date.day);
+
+    if (messageDay == today) {
+      return "Today";
+    } else if (messageDay == yesterday) {
+      return "Yesterday";
+    } else {
+      return DateFormat('EEEE, MMMM d, yyyy').format(date);
+    }
+  }
+
+  IconData _getFileIcon(String fileType) {
+    switch (fileType.toLowerCase()) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      case 'xls':
+      case 'xlsx':
+        return Icons.table_chart;
+      case 'ppt':
+      case 'pptx':
+        return Icons.slideshow;
+      case 'zip':
+        return Icons.folder_zip;
+      case 'txt':
+        return Icons.text_snippet;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB"];
+    var i = (log(bytes) / log(1024)).floor();
+    return '${(bytes / pow(1024, i)).toStringAsFixed(1)} ${suffixes[i]}';
+  }
+
+  void testFileOpening() async {
+    print('=== TESTING FILE OPENING ===');
+
+    // Test 1: Public URL
+    final publicUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+    print('Testing public URL: $publicUrl');
+
+    try {
+      final uri = Uri.parse(publicUrl);
+      bool canLaunch = await canLaunchUrl(uri);
+      print('Can launch public URL: $canLaunch');
+
+      if (canLaunch) {
+        bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        print('Public URL launched: $launched');
+      }
+    } catch (e) {
+      print('Public URL error: $e');
+    }
+
+    // Test 2: Your Firebase URL (replace with actual URL from your logs)
+    final firebaseUrl = 'your-actual-firebase-url-here';
+    print('Testing Firebase URL: $firebaseUrl');
+
+    try {
+      final uri = Uri.parse(firebaseUrl);
+      bool canLaunch = await canLaunchUrl(uri);
+      print('Can launch Firebase URL: $canLaunch');
+
+      if (canLaunch) {
+        bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        print('Firebase URL launched: $launched');
+      }
+    } catch (e) {
+      print('Firebase URL error: $e');
+    }
+
+    print('=== TEST COMPLETE ===');
+  }
+
+  Future<void> _openFile(String url, String fileName) async {
+    debugPrint('Attempting to open file: $fileName');
+    debugPrint('URL: $url');
+
+    try {
+      final Uri uri = Uri.parse(url);
+
+      final canLaunch = await canLaunchUrl(uri);
+      debugPrint('Can launch: $canLaunch');
+
+      if (!canLaunch) {
+        Utils.snackBar('Error', 'Cannot open file. No compatible app found.');
+        return;
+      }
+
+      // Use external mode on Android, webview for iOS/macOS
+      final mode = Theme.of(context).platform == TargetPlatform.android
+          ? LaunchMode.externalApplication
+          : LaunchMode.inAppWebView;
+
+      final launched = await launchUrl(uri, mode: mode);
+      debugPrint('Launch result: $launched');
+
+      if (!launched) {
+        Utils.snackBar('Error', 'Could not open file externally.');
+      }
+    } catch (e, stack) {
+      debugPrint('=== ERROR OPENING FILE ===');
+      debugPrint('Error: $e');
+      debugPrint('Stack: $stack');
+      debugPrint('=== END ERROR ===');
+      Utils.snackBar('Error', 'Failed to open file.');
+    }
+  }
+
+
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -333,7 +611,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (!_groupChatExists) {
       return Scaffold(
-        appBar: simpleAppBar(title: 'Back'),
+        appBar: simpleAppBar(title: widget.projectName),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -371,10 +649,168 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     return Scaffold(
-      appBar: simpleAppBar(title: 'Back'),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.projectName,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            StreamBuilder<QuerySnapshot>(
+              stream: _chatServices.getTypingStatus(widget.projectId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return SizedBox.shrink();
+
+                final List<String> typers = snapshot.data!.docs
+                    .where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return data['isTyping'] == true &&
+                      doc.id != _user?.uid &&
+                      _isUserTypingRecently(data['timestamp']);
+                })
+                    .map<String>((doc) => doc['userName'] ?? _getUserName(doc.id))
+                    .toList();
+
+                if (!_listsEqual(typers, _typingUsers)) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    setState(() {
+                      _typingUsers = typers;
+                    });
+                  });
+                }
+
+                return AnimatedContainer(
+                  duration: Duration(milliseconds: 200),
+                  height: typers.isNotEmpty ? 16 : 0,
+                  child: Text(
+                    typers.isNotEmpty ? '${typers.join(', ')} ${typers.length > 1 ? 'are' : 'is'} typing...' : '',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.normal,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+        backgroundColor: kSecondaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
       body: Column(
         children: [
           Expanded(child: buildGroupedChatList()),
+
+          // Pending attachments section
+          if (_pendingAttachments.isNotEmpty)
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: kFillColor,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Attachments',
+                        style: TextStyle(fontSize: 12, color: kQuaternaryColor, fontWeight: FontWeight.w600),
+                      ),
+                      Spacer(),
+                      GestureDetector(
+                        onTap: () {
+                          if (_pendingAttachments.any((att) => !att['uploading'] && att['url'] != null)) {
+                            _sendPendingAttachments(_controller.text.trim());
+                            _controller.clear();
+                          }
+                        },
+                        child: Text(
+                          'Send',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _pendingAttachments.any((att) => !att['uploading'] && att['url'] != null)
+                                ? kSecondaryColor
+                                : kQuaternaryColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  ..._pendingAttachments.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final attachment = entry.value;
+                    return Container(
+                      margin: EdgeInsets.only(bottom: 6),
+                      padding: EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: kBorderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _getFileIcon(attachment['extension']),
+                            color: attachment['error'] == true ? Colors.red : kSecondaryColor,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  attachment['name'],
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: kTertiaryColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  attachment['uploading']
+                                      ? 'Uploading...'
+                                      : attachment['error'] == true
+                                      ? 'Upload failed'
+                                      : _formatFileSize(attachment['size']),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: attachment['error'] == true ? Colors.red : kQuaternaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (attachment['uploading'])
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            GestureDetector(
+                              onTap: () => _removePendingAttachment(index),
+                              child: Icon(Icons.close, size: 16, color: kQuaternaryColor),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+
           if (_replyingTo != null)
             Container(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -422,7 +858,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           children: [
                             GestureDetector(
                               onTap: _showMediaPicker,
-                              child: Image.asset(Assets.imagesCam, height: 20),
+                              child: Icon(Icons.add),
+                              // child: Image.asset(Assets.imagesCam, height: 20),
                             ),
                           ],
                         ),
@@ -445,15 +882,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           vertical: 0,
                         ),
                       ),
-                      onChanged: (value) {
-                        if (value.isNotEmpty && !_isTyping) {
-                          _chatServices.setTypingStatus(widget.projectId, true);
-                          _isTyping = true;
-                        } else if (value.isEmpty && _isTyping) {
-                          _chatServices.setTypingStatus(widget.projectId, false);
-                          _isTyping = false;
-                        }
-                      },
+                      onChanged: _handleTextChange,
                       onEditingComplete: () {
                         _chatServices.setTypingStatus(widget.projectId, false);
                         _isTyping = false;
@@ -493,11 +922,21 @@ class _ChatScreenState extends State<ChatScreen> {
         final List<Widget> chatWidgets = [];
         DateTime? lastDate;
 
-        for (var message in messages) {
+        final sortedMessages = messages.toList()
+          ..sort((a, b) {
+            final aTime = (a.data() as Map<String, dynamic>)['sentAt'] as Timestamp?;
+            final bTime = (b.data() as Map<String, dynamic>)['sentAt'] as Timestamp?;
+            final aDate = aTime?.toDate() ?? DateTime.now();
+            final bDate = bTime?.toDate() ?? DateTime.now();
+            return aDate.compareTo(bDate);
+          });
+
+        for (var message in sortedMessages) {
           final data = message.data() as Map<String, dynamic>;
           final isUser = data['userId'] == _user?.uid;
           final timestamp = data['sentAt'] as Timestamp?;
           final msgDate = timestamp?.toDate() ?? DateTime.now();
+
           final showDate = lastDate == null || !isSameDay(lastDate, msgDate);
 
           if (showDate) {
@@ -506,17 +945,17 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 12.0),
                 child: Center(
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     decoration: BoxDecoration(
                       color: kFillColor,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      formatDate(msgDate),
+                      _getDateHeader(msgDate),
                       style: TextStyle(
                         color: kQuaternaryColor,
                         fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                        fontSize: 12,
                       ),
                     ),
                   ),
@@ -525,6 +964,11 @@ class _ChatScreenState extends State<ChatScreen> {
             );
             lastDate = msgDate;
           }
+
+          final userName = data['userName'] ?? _getUserName(data['userId']);
+          final replyToUserName = data['replyTo'] != null
+              ? _getUserName(data['replyTo']['userId'] ?? '')
+              : data['replyTo']?['sender'] ?? '';
 
           chatWidgets.add(
             GestureDetector(
@@ -541,7 +985,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        'Replying to ${data['replyTo']['sender']}: ${data['replyTo']['message']}',
+                        'Replying to $replyToUserName: ${data['replyTo']['message']}',
                         style: TextStyle(color: kQuaternaryColor, fontSize: 12),
                       ),
                     ),
@@ -562,11 +1006,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (!isUser && data['sentBy'] != null)
+                          if (!isUser && userName != null)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 4.0),
                               child: Text(
-                                data['sentBy'],
+                                userName,
                                 style: TextStyle(
                                   color: kSecondaryColor,
                                   fontWeight: FontWeight.bold,
@@ -574,27 +1018,130 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                               ),
                             ),
+
                           if (data['type'] == 'image' && data['mediaUrl'] != null)
-                            Image.network(
-                              data['mediaUrl'],
-                              width: 200,
-                              height: 200,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return CircularProgressIndicator();
-                              },
-                              errorBuilder: (context, error, stackTrace) => Icon(Icons.error),
-                            ),
-                          if (data['type'] == 'video' && data['mediaUrl'] != null)
-                            Text(
-                              '[Video] Tap to view',
-                              style: TextStyle(
-                                color: isUser ? kFillColor : kTertiaryColor,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                data['mediaUrl'],
+                                width: 200,
+                                height: 200,
+                                fit: BoxFit.cover,
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Container(
+                                    width: 200,
+                                    height: 200,
+                                    child: Center(child: CircularProgressIndicator()),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: kGreyColor2,
+                                  child: Icon(Icons.error, color: kQuaternaryColor),
+                                ),
                               ),
                             ),
+
+                          if (data['type'] == 'video' && data['mediaUrl'] != null)
+                            GestureDetector(
+                              onTap: () {
+                                Utils.snackBar('Info', 'Video playback coming soon');
+                              },
+                              child: Container(
+                                width: 200,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  color: kGreyColor2,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.play_circle_filled, size: 40, color: kSecondaryColor),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'Tap to play video',
+                                      style: TextStyle(color: kTertiaryColor),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          // In the attachments section of buildGroupedChatList:
+                          if (data['attachments'] != null && (data['attachments'] as List).isNotEmpty)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: (data['attachments'] as List<dynamic>).map((attachment) {
+                                final att = attachment as Map<String, dynamic>;
+                                return GestureDetector(
+                                  onTap: () {
+                                    print('Attempting to open file:');
+                                    print(att['url']);
+                                    // testFileOpening();
+                                    // _openFile('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', 'dummy.pdf');
+
+
+                                    _openFile(att['url'], att['name']);
+                                  },
+                                  child: Container(
+                                    width: 250,
+                                    margin: EdgeInsets.only(bottom: 8),
+                                    padding: EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: kFillColor,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: kBorderColor),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: kSecondaryColor.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Icon(
+                                            _getFileIcon(att['type']),
+                                            color: kSecondaryColor,
+                                            size: 20,
+                                          ),
+                                        ),
+                                        SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                att['name'],
+                                                style: TextStyle(
+                                                  color: kTertiaryColor,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 14,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              SizedBox(height: 4),
+                                              Text(
+                                                _formatFileSize(att['size']),
+                                                style: TextStyle(
+                                                  color: kQuaternaryColor,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Icon(Icons.open_in_new, color: kSecondaryColor, size: 20),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+
                           if (data['message']?.isNotEmpty ?? false)
                             Text(
                               data['message'],
@@ -604,7 +1151,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
-                          if (data['reactions'] != null)
+
+                          if (data['reactions'] != null && (data['reactions'] as Map).isNotEmpty)
                             Wrap(
                               spacing: 4,
                               children: (data['reactions'] as Map<String, dynamic>)
@@ -630,6 +1178,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                   ),
+
                   Padding(
                     padding: EdgeInsets.only(
                       left: isUser ? 60.0 : 8.0,
@@ -687,29 +1236,10 @@ class _ChatScreenState extends State<ChatScreen> {
         return ListView(
           controller: _scrollController,
           shrinkWrap: true,
-          reverse: true,
+          reverse: false,
           physics: BouncingScrollPhysics(),
           padding: AppSizes.DEFAULT,
-          children: [
-            StreamBuilder<QuerySnapshot>(
-              stream: _chatServices.getTypingStatus(widget.projectId),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return SizedBox.shrink();
-                final typers = snapshot.data!.docs
-                    .where((doc) => doc['isTyping'] == true && doc.id != _user?.uid)
-                    .map((doc) => doc['userName'])
-                    .toList();
-                return Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    typers.isNotEmpty ? '${typers.join(', ')} ${typers.length > 1 ? 'are' : 'is'} typing...' : '',
-                    style: TextStyle(fontSize: 12, color: kQuaternaryColor),
-                  ),
-                );
-              },
-            ),
-            ...chatWidgets,
-          ],
+          children: chatWidgets,
         );
       },
     );
@@ -717,13 +1247,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  String formatDate(DateTime date) {
-    final now = DateTime.now();
-    if (isSameDay(date, now)) return "Today";
-    if (isSameDay(date, now.subtract(Duration(days: 1)))) return "Yesterday";
-    return DateFormat('MMM d, yyyy').format(date);
   }
 
   @override

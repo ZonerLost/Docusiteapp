@@ -50,21 +50,31 @@ class RegisterViewModel extends GetxController {
     }, SetOptions(merge: true)); // Use merge: true to avoid overwriting existing data if doc exists
   }
 
-  // --- Regular Email/Password Signup ---
+// In RegisterViewModel, update the register method to be more specific about validation
   Future<void> register() async {
     final String email = emailController.text.trim();
     final String password = passwordController.text.trim();
     final String name = nameController.text.trim();
 
-    // Basic field validation
-    if (email.isEmpty || password.isEmpty || name.isEmpty) {
-      Utils.snackBar('Enter Required Fields', "Please fill in all the required fields.");
+    // Enhanced field validation
+    if (name.isEmpty) {
+      Utils.snackBar('Name Required', "Please enter your full name.");
+      return;
+    }
+
+    if (email.isEmpty || !GetUtils.isEmail(email)) {
+      Utils.snackBar('Valid Email Required', "Please enter a valid email address.");
+      return;
+    }
+
+    if (password.isEmpty || password.length < 6) {
+      Utils.snackBar('Password Required', "Password must be at least 6 characters long.");
       return;
     }
 
     // Term agreement check
     if (!agreedToTerms.value) {
-      Utils.snackBar('Terms & Conditions', "You must agree to the Terms & Conditions.");
+      Utils.snackBar('Terms & Conditions', "You must agree to the Terms & Conditions to continue.");
       return;
     }
 
@@ -86,7 +96,15 @@ class RegisterViewModel extends GetxController {
       loading.value = false;
     } on FirebaseAuthException catch (e) {
       loading.value = false;
-      Utils.snackBar('Firebase Register Error', e.message.toString());
+      String message = "Registration failed. Please try again.";
+      if (e.code == 'email-already-in-use') {
+        message = "An account with this email already exists.";
+      } else if (e.code == 'weak-password') {
+        message = "Password is too weak. Please choose a stronger password.";
+      } else if (e.code == 'invalid-email') {
+        message = "Invalid email address format.";
+      }
+      Utils.snackBar('Registration Error', message);
     } catch (e) {
       loading.value = false;
       Utils.snackBar('An unexpected error occurred', e.toString());
