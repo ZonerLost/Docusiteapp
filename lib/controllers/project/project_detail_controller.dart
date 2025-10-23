@@ -8,7 +8,7 @@ import 'package:get/get.dart';
 import 'package:docu_site/utils/Utils.dart';
 
 import '../../constants/app_colors.dart';
-import '../../models/project/collaborator.dart';
+import '../../models/collaborator/collaborator.dart';
 import '../../models/project/project.dart';
 import '../../models/project/project_file.dart';
 import '../../services/project_services/firestore_project_services.dart';
@@ -570,10 +570,6 @@ class ProjectDetailsController extends GetxController {
       print('Error in pending invites cleanup: $e');
       // Don't throw error here - we want to continue with project deletion
     }
-  }
-
-  void editProject() {
-    Utils.snackBar('Action', 'Edit project functionality TBD for ID: $projectId.');
   }
 
   bool canRemoveMember(String memberId) {

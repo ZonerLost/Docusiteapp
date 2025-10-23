@@ -53,6 +53,14 @@ dependencies:
   shared_preferences: ^2.2.2
   url_launcher: ^6.3.2
   syncfusion_flutter_pdfviewer: ^30.2.7
+  flutter_html: ^3.0.0-beta.2
+  webview_flutter: ^4.7.0
+  photo_view: ^0.15.0      # pinch-zoom image viewer
+  chewie: ^1.7.5
+  media_kit: ^1.1.10
+  media_kit_video: ^1.2.4
+  media_kit_libs_android_video: ^1.3.6
+  dio:
 
 
 #  flutter_local_notifications: ^17.2.3

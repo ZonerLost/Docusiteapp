@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 import '../../models/project/project.dart';
+import '../../models/project/project_update.dart';
 import '../../utils/Utils.dart';
 
 
@@ -105,30 +106,38 @@ class ProjectService extends GetxService {
         .orderBy('updatedAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      if (snapshot.docs.isEmpty) {
-        print('No projects found in /projects collection');
-        return <Project>[];
-      }
-
       final projectsList = <Project>[];
-      for (var doc in snapshot.docs) {
+      for (final doc in snapshot.docs) {
         try {
-          if (doc.exists && doc.data() != null) {
-            projectsList.add(Project.fromSnapshot(doc));
-          } else {
-            print('Project ${doc.id} has no data or does not exist');
-          }
+          projectsList.add(Project.fromSnapshot(doc));
         } catch (e) {
-          print('Error parsing project ${doc.id}: $e');
+          // Fallback: build a minimal Project so it still shows up
+          final m = doc.data() as Map<String, dynamic>? ?? {};
+          projectsList.add(Project(
+            id: doc.id,
+            title: (m['title'] ?? 'Untitled').toString(),
+            clientName: (m['clientName'] ?? '').toString(),
+            location: (m['location'] ?? '').toString(),
+            deadline: DateTime.tryParse((m['deadline'] ?? '').toString()) ?? DateTime.now(),
+            ownerId: (m['ownerId'] ?? '').toString(),
+            progress: (m['progress'] is num) ? (m['progress'] as num).toDouble() : 0.0,
+            collaborators: const [], // or parse loosely if you want
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+            status: (m['status'] ?? '').toString(),
+            lastUpdates: const [],
+          ));
+          // log but do NOT drop:
+          // print('Tolerated parse error for project ${doc.id}: $e');
         }
       }
-      print('Loaded ${projectsList.length} projects from /projects');
       return projectsList;
     }).handleError((error) {
-      print('Stream error: $error');
+      // print('Stream error: $error');
       return <Project>[];
     });
   }
+
 
   Stream<Project?> streamProject(String projectId) {
     return _projectsCollection.doc(projectId).snapshots().map((snapshot) {

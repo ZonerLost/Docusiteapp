@@ -8,7 +8,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../../config/routes/route_names.dart'; // Assuming this is correct
 import '../../utils/Utils.dart';
 
-class RegisterViewModel extends GetxController {
+class RegisterController extends GetxController {
 
   final emailController = TextEditingController();
   final nameController = TextEditingController();

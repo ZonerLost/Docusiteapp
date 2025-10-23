@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:docu_site/constants/app_colors.dart';
-import 'package:docu_site/constants/app_fonts.dart';
 import 'package:docu_site/constants/app_sizes.dart';
 import 'package:docu_site/view/widget/my_button_widget.dart';
 import 'package:docu_site/view/widget/my_text_field_widget.dart';
@@ -9,7 +8,7 @@ import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:docu_site/view/widget/common_image_view_widget.dart';
 import 'package:docu_site/models/project/project.dart';
 import 'package:docu_site/models/project/project_file.dart';
-import 'package:docu_site/models/project/collaborator.dart';
+import 'package:docu_site/models/collaborator/collaborator.dart';
 
 import '../../../constants/app_images.dart';
 import '../../../controllers/project/edit_project_controller.dart';
@@ -27,7 +26,9 @@ class EditProjectScreen extends StatelessWidget {
         init: EditProjectController(projectId: projectId),
         builder: (controller) {
           if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator(color: kSecondaryColor));
+            return const Center(
+              child: CircularProgressIndicator(color: kSecondaryColor),
+            );
           }
 
           if (controller.project.value == null) {
@@ -56,7 +57,7 @@ class EditProjectScreen extends StatelessWidget {
                     GestureDetector(
                       onTap: () => Get.back(),
                       child: Image.asset(
-                        'assets/images/arrow_back.png', // Replace with your back arrow asset
+                        'assets/images/arrow_back.png',
                         height: 24,
                         width: 24,
                       ),
@@ -77,7 +78,7 @@ class EditProjectScreen extends StatelessWidget {
                   physics: const BouncingScrollPhysics(),
                   padding: AppSizes.DEFAULT,
                   children: [
-                    // Project Information Section
+                    // Project Information (now includes dynamic fields)
                     _buildProjectInfoSection(controller),
                     const SizedBox(height: 20),
 
@@ -87,10 +88,6 @@ class EditProjectScreen extends StatelessWidget {
 
                     // Members Section
                     _buildMembersSection(controller),
-                    const SizedBox(height: 20),
-
-                    // Additional Fields Section
-                    _buildAdditionalFieldsSection(controller),
                     const SizedBox(height: 20),
 
                     // Save Button
@@ -127,6 +124,8 @@ class EditProjectScreen extends StatelessWidget {
             weight: FontWeight.w600,
             paddingBottom: 16,
           ),
+
+          // ===== Base fields =====
           SimpleTextField(
             controller: controller.titleController,
             labelText: 'Project Title',
@@ -156,6 +155,7 @@ class EditProjectScreen extends StatelessWidget {
             onTap: () => controller.selectDeadlineDate(),
           ),
           const SizedBox(height: 12),
+
           // Status Dropdown
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,12 +199,14 @@ class EditProjectScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+
           // Progress Slider
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               MyText(
-                text: 'Project Progress: ${(controller.progressValue.value * 100).toInt()}%',
+                text:
+                'Project Progress: ${(controller.progressValue.value * 100).toInt()}%',
                 size: 14,
                 weight: FontWeight.w500,
                 color: kQuaternaryColor,
@@ -222,6 +224,102 @@ class EditProjectScreen extends StatelessWidget {
                 },
               ),
             ],
+          ),
+
+          const SizedBox(height: 16),
+          // Divider before dynamic/base-extra fields
+          Container(height: 1, color: kBorderColor),
+          const SizedBox(height: 12),
+
+          // ===== Dynamic fields (base-extra) inline =====
+          if (controller.additionalFields.isNotEmpty)
+            MyText(
+              text: 'Additional Fields',
+              size: 16,
+              weight: FontWeight.w600,
+              paddingBottom: 8,
+            ),
+
+          ...controller.additionalFields.entries.map((entry) {
+            final key = entry.key;
+            final keyCtl = controller.keyControllers[key] ??
+                TextEditingController(text: key);
+            final valCtl = controller.valueControllers[key] ??
+                TextEditingController(text: entry.value?.toString() ?? '');
+
+            // Cache controllers (so they persist across rebuilds)
+            controller.keyControllers[key] = keyCtl;
+            controller.valueControllers[key] = valCtl;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Value input with label = field name
+                  Expanded(
+                    child: SimpleTextField(
+                      controller: valCtl,
+                      labelText: key,
+                      hintText: 'Enter $key',
+                      onChanged: (newValue) {
+                        controller.updateAdditionalFieldValue(key, newValue);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Small actions (rename/remove)
+                  Column(
+                    children: [
+                      IconButton(
+                        tooltip: 'Rename field',
+                        onPressed: () => _showRenameFieldDialog(
+                          controller,
+                          oldKey: key,
+                          initial: key,
+                        ),
+                        icon: const Icon(Icons.edit, size: 20, color: kTertiaryColor),
+                      ),
+                      IconButton(
+                        tooltip: 'Remove field',
+                        onPressed: () => controller.removeAdditionalField(key),
+                        icon: Image.asset(Assets.imagesDelete, height: 20, width: 20),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+
+          // If none exist, show a small helper text
+          if (controller.additionalFields.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: kFillColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: kBorderColor),
+              ),
+              child: MyText(
+                text:
+                'No additional fields yet. Add fields to store more project info (e.g., Plot Size, Budget, Architect, etc.).',
+                size: 13,
+                color: kQuaternaryColor,
+              ),
+            ),
+
+          const SizedBox(height: 12),
+
+          // Add Field button (inline)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: MyButton(
+              buttonText: '+ Add New Field',
+              bgColor: kFillColor,
+              textColor: kSecondaryColor,
+              onTap: () => _showAddFieldDialog(controller),
+            ),
           ),
         ],
       ),
@@ -305,21 +403,13 @@ class EditProjectScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Image.asset(
-            Assets.imagesPdf, // Replace with your PDF icon
-            height: 24,
-            width: 24,
-          ),
+          Image.asset(Assets.imagesPdf, height: 24, width: 24),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                MyText(
-                  text: file.fileName,
-                  size: 14,
-                  weight: FontWeight.w500,
-                ),
+                MyText(text: file.fileName, size: 14, weight: FontWeight.w500),
                 MyText(
                   text: 'Uploaded by ${file.uploadedBy}',
                   size: 12,
@@ -330,11 +420,7 @@ class EditProjectScreen extends StatelessWidget {
           ),
           IconButton(
             onPressed: () => _showDeleteFileDialog(controller, file),
-            icon: Image.asset(
-              Assets.imagesDelete, // Replace with your delete icon
-              height: 20,
-              width: 20,
-            ),
+            icon: Image.asset(Assets.imagesDelete, height: 20, width: 20),
           ),
         ],
       ),
@@ -362,7 +448,8 @@ class EditProjectScreen extends StatelessWidget {
                 ),
               ),
               MyText(
-                text: '${controller.project.value?.collaborators.length ?? 0} member(s)',
+                text:
+                '${controller.project.value?.collaborators.length ?? 0} member(s)',
                 size: 14,
                 color: kQuaternaryColor,
               ),
@@ -411,7 +498,9 @@ class EditProjectScreen extends StatelessWidget {
             height: 40,
             width: 40,
             radius: 20,
-            url: member.photoUrl.isNotEmpty ? member.photoUrl : 'assets/images/dummy_img.png',
+            url: member.photoUrl.isNotEmpty
+                ? member.photoUrl
+                : 'assets/images/dummy_img.png',
             fit: BoxFit.cover,
           ),
           const SizedBox(width: 12),
@@ -419,166 +508,49 @@ class EditProjectScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                MyText(
-                  text: member.name,
-                  size: 14,
-                  weight: FontWeight.w500,
-                ),
+                MyText(text: member.name, size: 14, weight: FontWeight.w500),
                 MyText(
                   text: '${member.role}${isOwner ? ' (Owner)' : ''}',
                   size: 12,
                   color: kQuaternaryColor,
                 ),
-                MyText(
-                  text: member.email,
-                  size: 12,
-                  color: kQuaternaryColor,
-                ),
+                MyText(text: member.email, size: 12, color: kQuaternaryColor),
               ],
             ),
           ),
           if (canRemove)
             IconButton(
               onPressed: () => _showRemoveMemberDialog(controller, member),
-              icon: Image.asset(
-                Assets.imagesDelete, // Replace with your delete icon
-                height: 20,
-                width: 20,
-              ),
+              icon: Image.asset(Assets.imagesDelete, height: 20, width: 20),
             ),
         ],
       ),
     );
   }
 
-  Widget _buildAdditionalFieldsSection(EditProjectController controller) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: kPrimaryColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kBorderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          MyText(
-            text: 'Additional Fields',
-            size: 18,
-            weight: FontWeight.w600,
-            paddingBottom: 16,
-          ),
-
-          // Existing additional fields
-          ...controller.additionalFields.entries.map((entry) {
-            return _buildAdditionalFieldItem(controller, entry.key, entry.value.toString());
-          }).toList(),
-
-          // Show message if no additional fields
-          if (controller.additionalFields.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: kFillColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: MyText(
-                text: 'No additional fields added yet',
-                size: 14,
-                color: kQuaternaryColor,
-                textAlign: TextAlign.center,
-              ),
-            ),
-
-          const SizedBox(height: 16),
-
-          // Add new field button
-          MyButton(
-            buttonText: '+ Add New Field',
-            bgColor: kFillColor,
-            textColor: kSecondaryColor,
-            onTap: () => _showAddFieldDialog(controller),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAdditionalFieldItem(EditProjectController controller, String key, String value) {
-    final keyController = TextEditingController(text: key);
-    final valueController = TextEditingController(text: value);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: SimpleTextField(
-              controller: keyController,
-              labelText: 'Field Name',
-              onChanged: (newKey) {
-                if (newKey.isNotEmpty && newKey != key) {
-                  controller.updateAdditionalFieldKey(key, newKey);
-                }
-              },
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 3,
-            child: SimpleTextField(
-              controller: valueController,
-              labelText: 'Field Value',
-              onChanged: (newValue) {
-                controller.updateAdditionalFieldValue(key, newValue);
-              },
-            ),
-          ),
-          IconButton(
-            onPressed: () => controller.removeAdditionalField(key),
-            icon: Image.asset(
-              Assets.imagesDelete,
-              height: 20,
-              width: 20,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // ======= Dialogs / helpers =======
 
   void _showDeleteFileDialog(EditProjectController controller, ProjectFile file) {
     Get.dialog(
       AlertDialog(
-        title: MyText(
-          text: 'Delete File',
-          size: 18,
-          weight: FontWeight.w600,
-        ),
+        title: MyText(text: 'Delete File', size: 18, weight: FontWeight.w600),
         content: MyText(
-          text: 'Are you sure you want to delete ${file.fileName}? This action cannot be undone.',
+          text: 'Are you sure you want to delete ${file.fileName}? '
+              'This action cannot be undone.',
           size: 14,
           color: kQuaternaryColor,
         ),
         actions: [
           TextButton(
             onPressed: () => Get.back(),
-            child: MyText(
-              text: 'Cancel',
-              color: kQuaternaryColor,
-            ),
+            child: MyText(text: 'Cancel', color: kQuaternaryColor),
           ),
           TextButton(
             onPressed: () {
               Get.back();
               controller.deleteFile(file);
             },
-            child: MyText(
-              text: 'Delete',
-              color: kRedColor,
-              weight: FontWeight.w600,
-            ),
+            child: MyText(text: 'Delete', color: kRedColor, weight: FontWeight.w600),
           ),
         ],
       ),
@@ -588,11 +560,7 @@ class EditProjectScreen extends StatelessWidget {
   void _showRemoveMemberDialog(EditProjectController controller, Collaborator member) {
     Get.dialog(
       AlertDialog(
-        title: MyText(
-          text: 'Remove Member',
-          size: 18,
-          weight: FontWeight.w600,
-        ),
+        title: MyText(text: 'Remove Member', size: 18, weight: FontWeight.w600),
         content: MyText(
           text: 'Are you sure you want to remove ${member.name} from the project?',
           size: 14,
@@ -601,21 +569,14 @@ class EditProjectScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Get.back(),
-            child: MyText(
-              text: 'Cancel',
-              color: kQuaternaryColor,
-            ),
+            child: MyText(text: 'Cancel', color: kQuaternaryColor),
           ),
           TextButton(
             onPressed: () {
               Get.back();
               controller.removeMember(member.uid);
             },
-            child: MyText(
-              text: 'Remove',
-              color: kRedColor,
-              weight: FontWeight.w600,
-            ),
+            child: MyText(text: 'Remove', color: kRedColor, weight: FontWeight.w600),
           ),
         ],
       ),
@@ -628,11 +589,7 @@ class EditProjectScreen extends StatelessWidget {
 
     Get.dialog(
       AlertDialog(
-        title: MyText(
-          text: 'Add New Field',
-          size: 18,
-          weight: FontWeight.w600,
-        ),
+        title: MyText(text: 'Add New Field', size: 18, weight: FontWeight.w600),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -652,26 +609,50 @@ class EditProjectScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Get.back(),
-            child: MyText(
-              text: 'Cancel',
-              color: kQuaternaryColor,
-            ),
+            child: MyText(text: 'Cancel', color: kQuaternaryColor),
           ),
           TextButton(
             onPressed: () {
-              if (fieldNameController.text.trim().isNotEmpty) {
-                controller.addAdditionalField(
-                  fieldNameController.text.trim(),
-                  fieldValueController.text.trim(),
-                );
+              final k = fieldNameController.text.trim();
+              final v = fieldValueController.text.trim();
+              if (k.isNotEmpty) {
+                controller.addAdditionalField(k, v);
                 Get.back();
               }
             },
-            child: MyText(
-              text: 'Add',
-              color: kSecondaryColor,
-              weight: FontWeight.w600,
-            ),
+            child: MyText(text: 'Add', color: kSecondaryColor, weight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRenameFieldDialog(EditProjectController controller,
+      {required String oldKey, required String initial}) {
+    final renameCtl = TextEditingController(text: initial);
+
+    Get.dialog(
+      AlertDialog(
+        title: MyText(text: 'Rename Field', size: 18, weight: FontWeight.w600),
+        content: SimpleTextField(
+          controller: renameCtl,
+          labelText: 'New Field Name',
+          hintText: 'Enter new field name',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: MyText(text: 'Cancel', color: kQuaternaryColor),
+          ),
+          TextButton(
+            onPressed: () {
+              final newKey = renameCtl.text.trim();
+              if (newKey.isNotEmpty && newKey != oldKey) {
+                controller.updateAdditionalFieldKey(oldKey, newKey);
+              }
+              Get.back();
+            },
+            child: MyText(text: 'Rename', color: kSecondaryColor, weight: FontWeight.w600),
           ),
         ],
       ),

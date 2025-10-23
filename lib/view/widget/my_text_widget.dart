@@ -3,9 +3,7 @@ import 'package:docu_site/constants/app_colors.dart';
 
 import '../../constants/app_fonts.dart';
 
-// ignore: must_be_immutable
 class MyText extends StatelessWidget {
-  // ignore: prefer_typing_uninitialized_variables
   final String text;
   final String? fontFamily;
   final TextAlign? textAlign;

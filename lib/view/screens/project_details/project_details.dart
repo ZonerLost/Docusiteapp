@@ -1,7 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
-
 import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_fonts.dart';
 import 'package:docu_site/constants/app_images.dart';
@@ -12,22 +8,18 @@ import 'package:docu_site/view/screens/project_details/pdf_details.dart';
 import 'package:docu_site/view/widget/common_image_view_widget.dart';
 import 'package:docu_site/view/widget/custom_drop_down_widget.dart';
 import 'package:docu_site/view/widget/my_button_widget.dart';
-import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:docu_site/utils/Utils.dart';
+import '../../../controllers/home/home_controller.dart';
 import '../../../controllers/project/project_detail_controller.dart';
-import '../../../models/project/collaborator.dart';
+import '../../../models/collaborator/collaborator.dart';
 import '../../../models/project/project.dart';
 import '../../../models/project/project_file.dart';
-import '../../../view_model/home/home_view_model.dart';
-import '../../widget/invite_member_dialog.dart';
-import '../home/invite_to_project_dialog.dart';
-import 'package:crypto/crypto.dart';
-
+import 'invite_to_project_dialog.dart';
 import 'edit_project.dart';
 
 class ProjectDetails extends StatelessWidget {
@@ -37,11 +29,11 @@ class ProjectDetails extends StatelessWidget {
   ProjectDetails({super.key, required this.projectId}) {
     Get.put(ProjectDetailsController(projectId: projectId), tag: tag);
     // Ensure HomeViewModel is initialized for member invitation
-    Get.put(HomeViewModel());
+    Get.put(HomeController());
   }
 
   ProjectDetailsController get controller => Get.find<ProjectDetailsController>(tag: tag);
-  HomeViewModel get homeViewModel => Get.find<HomeViewModel>();
+  HomeController get homeViewModel => Get.find<HomeController>();
 
   @override
   Widget build(BuildContext context) {
@@ -293,7 +285,8 @@ class _DetailRows extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final details = [
+    // Base details
+    final List<Map<String, String>> details = [
       {'title': 'Client name', 'value': project.clientName},
       {'title': 'Status', 'value': project.status},
       {'title': 'Location', 'value': project.location},
@@ -302,94 +295,77 @@ class _DetailRows extends StatelessWidget {
       {'title': 'Members', 'value': '${controller.memberCount} members'},
     ];
 
+    // Append extra fields AFTER base details
+    final extra = project.extraFields;
+    if (extra.isNotEmpty) {
+      final keys = extra.keys.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      for (final k in keys) {
+        details.add({'title': k, 'value': (extra[k] ?? '').toString()});
+      }
+    }
+
     return Column(
       children: List.generate(details.length, (index) {
         final detail = details[index];
-        final bool isStatus = detail['title'] == 'Status';
-        final bool isLocation = detail['title'] == 'Location';
+        final title = detail['title'] ?? '';
+        final value = detail['value'] ?? '';
+
+        final bool isStatus = title == 'Status';
+        final bool isLocation = title == 'Location';
 
         return Container(
           height: 48,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             border: Border(
-              top: BorderSide(
-                color: kBorderColor,
-                width: 1.0,
-              ),
+              top: BorderSide(color: kBorderColor, width: 1.0),
             ),
           ),
           child: Row(
             children: [
+              const SizedBox(width: 0),
+              // Title
               Expanded(
+                flex: 3,
                 child: MyText(
-                  text: detail['title']!,
+                  text: title,
                   color: kQuaternaryColor,
                 ),
-                flex: 3,
               ),
+              // Divider
               Container(
-                margin: EdgeInsets.symmetric(horizontal: 10),
+                margin: const EdgeInsets.symmetric(horizontal: 10),
                 height: 48,
                 width: 1,
                 color: kBorderColor,
               ),
+              // Value
               Expanded(
+                flex: 7,
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (isLocation)
-                      Expanded(
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: kGreyColor2,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              width: 1.0,
-                              color: kBorderColor,
-                            ),
-                          ),
-                          child: MyText(
-                            text: detail['value']!,
-                            size: 12,
-                            maxLines: 1,
-                            textOverflow: TextOverflow.ellipsis,
-                            color: kTertiaryColor,
-                            weight: FontWeight.w500,
-                          ),
-                        ),
-                      )
-                    else
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: isStatus
-                              ? kOrangeColor.withOpacity(0.08)
-                              : kGreyColor2,
+                          color: isStatus ? kOrangeColor.withOpacity(0.08) : kGreyColor2,
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
                             width: 1.0,
-                            color: isStatus
-                                ? kOrangeColor.withOpacity(0.08)
-                                : kBorderColor,
+                            color: isStatus ? kOrangeColor.withOpacity(0.08) : kBorderColor,
                           ),
                         ),
                         child: MyText(
-                          text: detail['value']!,
+                          text: value,
                           size: 12,
+                          maxLines: 1,
+                          textOverflow: TextOverflow.ellipsis,
                           color: isStatus ? kOrangeColor : kTertiaryColor,
                           weight: FontWeight.w500,
                         ),
                       ),
+                    ),
                   ],
                 ),
-                flex: 7,
               ),
             ],
           ),
@@ -398,6 +374,7 @@ class _DetailRows extends StatelessWidget {
     );
   }
 }
+
 
 class _FilesAndDocuments extends StatelessWidget {
   final ProjectDetailsController controller;
@@ -470,7 +447,16 @@ class _FilesAndDocuments extends StatelessWidget {
                     final file = files[fileIndex];
                     return GestureDetector(
                       onTap: () {
-                        Get.to(() => PdfDetails());
+                        // guard
+                        if ((file.fileUrl).isEmpty) {
+                          Utils.snackBar('Error', 'File URL is missing.');
+                          return;
+                        }
+                        Get.to(() => PdfDetails(
+                          fileUrl: file.fileUrl,        // ← pass URL
+                          fileName: file.fileName,      // ← pass name (optional, for title/future use)
+                          projectId: controller.projectId, // ← optional if you’ll need it later
+                        ));
                       },
 
                       child: Container(
@@ -525,7 +511,9 @@ class _FilesAndDocuments extends StatelessWidget {
                                         paddingTop: 4,
                                         size: 12,
                                         color: kQuaternaryColor,
-                                        text: 'Last updated: ${DateFormat('MMM dd, hh:mm a').format(file.lastUpdated)}',
+                                        text: 'Last updated: ${file.lastUpdated != null
+                                            ? DateFormat('MMM dd, hh:mm a').format(file.lastUpdated!)
+                                            : '—'}',
                                       ),
                                     ],
                                   ),

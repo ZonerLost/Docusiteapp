@@ -13,13 +13,14 @@ import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:get/get.dart';
 
-import '../../../../view_model/auth/register_view_model.dart';
+import '../../../../controllers/auth/register_controller.dart';
+
 
 class Register extends StatelessWidget {
   Register({super.key});
 
   // Instantiate the controller once
-  final RegisterViewModel _viewModel = Get.put(RegisterViewModel());
+  final RegisterController _viewModel = Get.put(RegisterController());
 
   @override
   Widget build(BuildContext context) {
