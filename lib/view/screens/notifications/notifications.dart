@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:get/Get.dart';
 import 'package:intl/intl.dart';
 
-import '../home/project_invites.dart';
+import '../home/support_widgets/project_invites.dart';
 
 class Notifications extends StatelessWidget {
   const Notifications({super.key});

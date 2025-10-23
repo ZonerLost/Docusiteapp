@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:expandable/expandable.dart';
 import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_images.dart';
@@ -13,33 +14,35 @@ class HelpAndSupport extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: simpleAppBar(title: 'Help & Support'),
-      body: ListView(
-        shrinkWrap: true,
-        padding: AppSizes.DEFAULT,
-        physics: BouncingScrollPhysics(),
-        children: [
-          _Faq(
-            title: 'What is DocuSite?',
-            subTitle:
-                'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.',
-          ),
-          _Faq(
-            title: 'Lorem ipsum dolor iust amet?',
-            subTitle: 'Lorem ipsum dolor iust amet?',
-          ),
-          _Faq(
-            title: 'Lorem ipsum dolor iust amet?',
-            subTitle: 'Lorem ipsum dolor iust amet?',
-          ),
-          _Faq(
-            title: 'Lorem ipsum dolor iust amet?',
-            subTitle: 'Lorem ipsum dolor iust amet?',
-          ),
-          _Faq(
-            title: 'Lorem ipsum dolor iust amet?',
-            subTitle: 'Lorem ipsum dolor iust amet?',
-          ),
-        ],
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('app_faqs')
+            .orderBy('orderIndex', descending: false)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Center(child: MyText(text: "No FAQs available."));
+          }
+
+          final faqDocs = snapshot.data!.docs;
+
+          return ListView.builder(
+            padding: AppSizes.DEFAULT,
+            physics: BouncingScrollPhysics(),
+            itemCount: faqDocs.length,
+            itemBuilder: (context, index) {
+              final faq = faqDocs[index].data() as Map<String, dynamic>;
+              return _Faq(
+                title: faq['question'] ?? 'Untitled',
+                subTitle: faq['answer'] ?? '',
+              );
+            },
+          );
+        },
       ),
     );
   }

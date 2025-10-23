@@ -10,7 +10,7 @@ import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../view_model/edit_profile/edit_profile_controller.dart'; // Import image_picker
+import '../../../controllers/edit_profile/edit_profile_controller.dart';
 
 // Change to GetView for direct access to the controller
 class EditProfile extends GetView<EditProfileController> {
@@ -38,9 +38,7 @@ class EditProfile extends GetView<EditProfileController> {
             ),
             child: Row(
               children: [
-                // Use Obx to make the image view reactive
                 Obx(() {
-                  // Display selected local image if available, otherwise network image
                   ImageProvider<Object> imageProvider;
                   if (controller.imageFile.value != null) {
                     imageProvider = FileImage(controller.imageFile.value!);

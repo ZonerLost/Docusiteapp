@@ -7,7 +7,7 @@ import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import '../../../controllers/home/home_controller.dart';
+import '../../../../controllers/home/home_controller.dart';
 
 class ProjectInvites extends StatelessWidget {
   final HomeController _viewModel = Get.find<HomeController>();

@@ -6,8 +6,6 @@ import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../controllers/project/project_detail_controller.dart';
-import '../../../models/project/project.dart';
-import '../../widget/custom_drop_down_widget.dart';
 
 class InviteToProjectDialog extends StatelessWidget {
   final ProjectDetailsController controller;

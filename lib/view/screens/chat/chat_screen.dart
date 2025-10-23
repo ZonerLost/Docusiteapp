@@ -4,6 +4,9 @@ import 'package:docu_site/constants/app_fonts.dart';
 import 'package:docu_site/constants/app_images.dart';
 import 'package:docu_site/constants/app_sizes.dart';
 import 'package:docu_site/utils/utils.dart';
+import 'package:docu_site/view/screens/chat/support_screens/file_viewer_screen.dart';
+import 'package:docu_site/view/screens/chat/support_screens/image_viewer_screen.dart';
+import 'package:docu_site/view/screens/chat/support_screens/video_player_screen.dart';
 import 'package:docu_site/view/widget/common_image_view_widget.dart';
 import 'package:docu_site/view/widget/custom_app_bar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -1020,35 +1023,30 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
 
                           if (data['type'] == 'image' && data['mediaUrl'] != null)
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                data['mediaUrl'],
-                                width: 200,
-                                height: 200,
-                                fit: BoxFit.cover,
-                                loadingBuilder: (context, child, loadingProgress) {
-                                  if (loadingProgress == null) return child;
-                                  return Container(
+                            GestureDetector(
+                              onTap: () {
+                                final tag = 'img_${message.id}';
+                                Get.to(() => ImageViewerScreen(url: data['mediaUrl'], heroTag: tag));
+                              },
+                              child: Hero(
+                                tag: 'img_${message.id}',
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    data['mediaUrl'],
                                     width: 200,
                                     height: 200,
-                                    child: Center(child: CircularProgressIndicator()),
-                                  );
-                                },
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  width: 200,
-                                  height: 200,
-                                  color: kGreyColor2,
-                                  child: Icon(Icons.error, color: kQuaternaryColor),
+                                    fit: BoxFit.cover,
+                                    // (keep your loading/error builders if you like)
+                                  ),
                                 ),
                               ),
                             ),
 
+
                           if (data['type'] == 'video' && data['mediaUrl'] != null)
                             GestureDetector(
-                              onTap: () {
-                                Utils.snackBar('Info', 'Video playback coming soon');
-                              },
+                              onTap: () => Get.to(() => VideoPlayerScreen(url: data['mediaUrl'])),
                               child: Container(
                                 width: 200,
                                 height: 120,
@@ -1056,19 +1054,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                   color: kGreyColor2,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.play_circle_filled, size: 40, color: kSecondaryColor),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      'Tap to play video',
-                                      style: TextStyle(color: kTertiaryColor),
-                                    ),
-                                  ],
-                                ),
+                                child: const Icon(Icons.play_circle_filled, size: 40, color: Colors.black54),
                               ),
                             ),
+
 
                           // In the attachments section of buildGroupedChatList:
                           if (data['attachments'] != null && (data['attachments'] as List).isNotEmpty)
@@ -1077,15 +1066,42 @@ class _ChatScreenState extends State<ChatScreen> {
                               children: (data['attachments'] as List<dynamic>).map((attachment) {
                                 final att = attachment as Map<String, dynamic>;
                                 return GestureDetector(
+
                                   onTap: () {
-                                    print('Attempting to open file:');
-                                    print(att['url']);
-                                    // testFileOpening();
-                                    // _openFile('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', 'dummy.pdf');
+                                    final url = att['url'] as String;
+                                    final name = att['name'] as String? ?? 'file';
+                                    final ext  = (att['type'] as String? ?? '').toLowerCase();
 
+                                    final isImage = ['jpg','jpeg','png','gif','webp','bmp','heic','heif'].contains(ext);
+                                    final isVideo = ['mp4','mov','m4v','avi','webm','3gp','mkv'].contains(ext);
+                                    final isPdf   = ext == 'pdf';
 
-                                    _openFile(att['url'], att['name']);
+                                    if (isImage) {
+                                      Get.to(() => ImageViewerScreen(url: url));
+                                    } else if (isVideo) {
+                                      Get.to(() => VideoPlayerScreen(url: url));
+                                    } else if (isPdf) {
+                                      Get.to(() => FileViewerScreen(
+                                        url: url,
+                                        fileName: name,
+                                        ext: ext,
+                                      ));
+                                    } else {
+                                      // fallback for other docs
+                                      Get.to(() => FileViewerScreen(url: url, fileName: name, ext: ext));
+                                    }
                                   },
+
+
+                                  // onTap: () {
+                                  //   print('Attempting to open file:');
+                                  //   print(att['url']);
+                                  //   // testFileOpening();
+                                  //   // _openFile('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', 'dummy.pdf');
+                                  //
+                                  //
+                                  //   _openFile(att['url'], att['name']);
+                                  // },
                                   child: Container(
                                     width: 250,
                                     margin: EdgeInsets.only(bottom: 8),

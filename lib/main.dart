@@ -2,7 +2,6 @@
 import 'package:docu_site/services/project_services/firestore_project_services.dart';
 import 'package:docu_site/utils/Utils.dart';
 import 'package:docu_site/view/screens/notifications/notifications.dart';
-import 'package:docu_site/view_model/edit_profile/edit_profile_controller.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +9,7 @@ import 'package:get/get.dart';
 import 'config/routes/routes.dart';
 import 'config/routes/route_names.dart';
 import 'config/theme/light_theme.dart';
+import 'controllers/edit_profile/edit_profile_controller.dart';
 import 'firebase_options.dart';
 
 // Background message handler for FCM (must be a top-level function)

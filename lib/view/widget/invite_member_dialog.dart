@@ -5,10 +5,10 @@ import 'package:get/get_rx/src/rx_types/rx_types.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_sizes.dart';
+import '../../controllers/home/home_controller.dart';
 import '../../controllers/project/project_detail_controller.dart';
 import '../../models/project/project.dart';
 import '../../utils/Utils.dart';
-import '../../view_model/home/home_view_model.dart';
 import 'custom_drop_down_widget.dart';
 import 'my_button_widget.dart';
 import 'my_text_field_widget.dart';
@@ -19,7 +19,7 @@ import 'my_text_widget.dart';
 class InviteNewMember extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final HomeViewModel viewModel = Get.find();
+    final HomeController viewModel = Get.find();
 
     return Container(
       height: Get.height * 0.6,

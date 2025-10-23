@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../models/project/project.dart';
 import '../../../models/project/project_file.dart';
-import '../../../models/project/collaborator.dart';
+import '../../models/collaborator/collaborator.dart';
 import '../../../services/project_services/firestore_project_services.dart';
 import '../../../utils/Utils.dart';
 
@@ -27,18 +27,21 @@ class EditProjectController extends GetxController {
   final TextEditingController clientController = TextEditingController();
   final TextEditingController locationController = TextEditingController();
   final TextEditingController deadlineController = TextEditingController();
-  final RxString selectedStatus = 'In progress'.obs;
+  final RxString selectedStatus = 'In Progress'.obs; // keep same spelling used in UI
   final RxDouble progressValue = 0.0.obs;
 
-  // Additional fields - stored as top-level fields
+  /// Dynamic/base-extra fields are edited via this reactive map
   final RxMap<String, dynamic> additionalFields = <String, dynamic>{}.obs;
+
+  /// Cache text controllers per-field to avoid recreating them on rebuild
+  final Map<String, TextEditingController> keyControllers = {};
+  final Map<String, TextEditingController> valueControllers = {};
 
   EditProjectController({required this.projectId});
 
   @override
   void onInit() {
     super.onInit();
-    print('🎬 EditProjectController initialized for project: $projectId');
     _loadProject();
   }
 
@@ -47,37 +50,35 @@ class EditProjectController extends GetxController {
       isLoading.value = true;
       update();
 
-      print('🔄 Loading project: $projectId');
       final projectData = await _projectService.getProject(projectId);
 
       if (projectData != null) {
-        project.value = projectData;
-        _initializeForm(projectData);
-        _loadAdditionalFields();
-        print('✅ Project loaded: ${projectData.title}');
+        bindProject(projectData);
       } else {
-        print('❌ Project not found');
         project.value = null;
       }
     } catch (e, stackTrace) {
-      print('❌ Error loading project: $e');
-      print('Stack trace: $stackTrace');
+      print('❌ Error loading project: $e\n$stackTrace');
       Utils.snackBar('Error', 'Failed to load project: ${e.toString()}');
       project.value = null;
     } finally {
       isLoading.value = false;
       update();
-      print('🏁 Loading completed');
     }
   }
 
-  void _initializeForm(Project projectData) {
-    titleController.text = projectData.title;
-    clientController.text = projectData.clientName;
-    locationController.text = projectData.location;
-    deadlineController.text = DateFormat('yyyy-MM-dd').format(projectData.deadline);
+  /// Bind a loaded project to form + dynamic fields
+  void bindProject(Project p) {
+    project.value = p;
 
-    final status = projectData.status;
+    // Base fields
+    titleController.text = p.title;
+    clientController.text = p.clientName;
+    locationController.text = p.location;
+    deadlineController.text = DateFormat('yyyy-MM-dd').format(p.deadline);
+
+    // Status normalization
+    final status = p.status;
     if (Project.statusOptions.contains(status)) {
       selectedStatus.value = status;
     } else {
@@ -95,39 +96,34 @@ class EditProjectController extends GetxController {
       _fixProjectStatus(status, selectedStatus.value);
     }
 
-    progressValue.value = projectData.progress;
+    progressValue.value = p.progress;
 
+    // Dynamic fields (extraFields)
+    additionalFields.clear();
+    additionalFields.addAll(p.extraFields);
+
+    // controllers for dynamic fields
+    keyControllers.clear();
+    valueControllers.clear();
+    for (final e in additionalFields.entries) {
+      keyControllers[e.key] = TextEditingController(text: e.key);
+      valueControllers[e.key] =
+          TextEditingController(text: e.value?.toString() ?? '');
+    }
+
+    // subscribe for light UI refreshes
     selectedStatus.listen((_) => update());
     progressValue.listen((_) => update());
-  }
-
-  // Load additional fields from the complete project document
-  void _loadAdditionalFields() async {
-    try {
-      final doc = await _firestore.collection('projects').doc(projectId).get();
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        final loadedAdditionalFields = Project.getAdditionalFieldsFromData(data);
-
-        additionalFields.clear();
-        additionalFields.addAll(loadedAdditionalFields);
-        print('📋 Loaded ${additionalFields.length} additional fields: $additionalFields');
-      }
-    } catch (e) {
-      print('❌ Error loading additional fields: $e');
-    }
+    update();
   }
 
   Future<void> _fixProjectStatus(String oldStatus, String newStatus) async {
     try {
-      print('🔄 Fixing project status from "$oldStatus" to "$newStatus"');
       await _firestore.collection('projects').doc(projectId).update({
         'status': newStatus,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-    } catch (e) {
-      print('⚠️ Could not fix project status: $e');
-    }
+    } catch (_) {}
   }
 
   // Group files by category
@@ -136,9 +132,7 @@ class EditProjectController extends GetxController {
     final Map<String, List<ProjectFile>> map = {};
     for (var file in project.value!.files) {
       if (file.category.isNotEmpty) {
-        if (!map.containsKey(file.category)) {
-          map[file.category] = [];
-        }
+        map.putIfAbsent(file.category, () => []);
         map[file.category]!.add(file);
       }
     }
@@ -205,6 +199,7 @@ class EditProjectController extends GetxController {
       );
 
       Utils.snackBar('Success', '${file.fileName} deleted successfully.');
+      update();
     } catch (e) {
       Utils.snackBar('Error', 'Failed to delete file: ${e.toString()}');
     }
@@ -240,51 +235,61 @@ class EditProjectController extends GetxController {
       );
 
       Utils.snackBar('Success', '${member.name} removed from project.');
+      update();
     } catch (e) {
       Utils.snackBar('Error', 'Failed to remove member: ${e.toString()}');
     }
   }
 
-  // Additional fields operations
+  /// ========= Additional fields (extraFields) =========
+
   void addAdditionalField(String key, String value) {
-    if (key.trim().isNotEmpty && !Project.reservedFieldNames.contains(key)) {
-      additionalFields[key] = value;
-      print('➕ Added additional field: $key = $value');
-      update();
-    } else if (Project.reservedFieldNames.contains(key)) {
+    if (key.trim().isEmpty) return;
+    if (Project.reservedFieldNames.contains(key)) {
       Utils.snackBar('Error', '"$key" is a reserved field name and cannot be used.');
+      return;
     }
+    additionalFields[key] = value;
+    keyControllers[key] = TextEditingController(text: key);
+    valueControllers[key] = TextEditingController(text: value);
+    update();
   }
 
   void updateAdditionalFieldKey(String oldKey, String newKey) {
-    if (additionalFields.containsKey(oldKey) && newKey.trim().isNotEmpty && !Project.reservedFieldNames.contains(newKey)) {
-      final value = additionalFields[oldKey]!;
-      additionalFields.remove(oldKey);
-      additionalFields[newKey] = value;
-      print('✏️ Updated additional field key: $oldKey → $newKey');
-      update();
-    } else if (Project.reservedFieldNames.contains(newKey)) {
+    if (!additionalFields.containsKey(oldKey)) return;
+    if (newKey.trim().isEmpty) return;
+    if (Project.reservedFieldNames.contains(newKey)) {
       Utils.snackBar('Error', '"$newKey" is a reserved field name and cannot be used.');
+      return;
     }
+
+    final val = additionalFields.remove(oldKey);
+    additionalFields[newKey] = val;
+
+    final kc = keyControllers.remove(oldKey);
+    final vc = valueControllers.remove(oldKey);
+    if (kc != null) keyControllers[newKey] = kc..text = newKey;
+    if (vc != null) valueControllers[newKey] = vc;
+
+    update();
   }
 
   void updateAdditionalFieldValue(String key, String value) {
-    if (additionalFields.containsKey(key)) {
-      additionalFields[key] = value;
-      print('✏️ Updated additional field value: $key = $value');
-      update();
-    }
+    if (!additionalFields.containsKey(key)) return;
+    additionalFields[key] = value;
+    valueControllers[key]?.text = value;
+    update();
   }
 
   void removeAdditionalField(String key) {
-    if (additionalFields.containsKey(key)) {
-      additionalFields.remove(key);
-      print('🗑️ Removed additional field: $key');
-      update();
-    }
+    if (!additionalFields.containsKey(key)) return;
+    additionalFields.remove(key);
+    keyControllers.remove(key)?.dispose();
+    valueControllers.remove(key)?.dispose();
+    update();
   }
 
-  // Save all changes - UPDATED to save additional fields as top-level fields
+  /// Save all changes — writes extraFields as a single map under /projects/{id}.extraFields
   Future<void> saveChanges() async {
     if (!isCurrentUserOwner) {
       Utils.snackBar('Error', 'Only project owner can edit project.');
@@ -307,7 +312,7 @@ class EditProjectController extends GetxController {
 
       var updatedProject = currentProject;
 
-      // Track changes for basic fields
+      // Track changes for base fields
       if (titleController.text.trim() != currentProject.title) {
         updatedProject = updatedProject.addProjectInfoUpdate(
           'title',
@@ -316,7 +321,6 @@ class EditProjectController extends GetxController {
           _currentUserName,
         );
       }
-
       if (clientController.text.trim() != currentProject.clientName) {
         updatedProject = updatedProject.addProjectInfoUpdate(
           'client name',
@@ -325,7 +329,6 @@ class EditProjectController extends GetxController {
           _currentUserName,
         );
       }
-
       if (locationController.text.trim() != currentProject.location) {
         updatedProject = updatedProject.addProjectInfoUpdate(
           'location',
@@ -334,7 +337,6 @@ class EditProjectController extends GetxController {
           _currentUserName,
         );
       }
-
       if (selectedStatus.value != currentProject.status) {
         updatedProject = updatedProject.addStatusUpdate(
           selectedStatus.value,
@@ -342,7 +344,6 @@ class EditProjectController extends GetxController {
           _currentUserName,
         );
       }
-
       if (progressValue.value != currentProject.progress) {
         updatedProject = updatedProject.addProgressUpdate(
           progressValue.value,
@@ -361,29 +362,32 @@ class EditProjectController extends GetxController {
         );
       }
 
-      // Handle additional fields changes
-      final oldAdditionalFields = await _getCurrentAdditionalFields();
-      final hasAdditionalFieldsChanged = !_areMapsEqual(oldAdditionalFields, additionalFields);
-
-      if (hasAdditionalFieldsChanged) {
-        _trackAdditionalFieldChanges(oldAdditionalFields, additionalFields, updatedProject);
+      // Compare dynamic fields (extraFields) and CAPTURE returned Project
+      final oldExtra = Map<String, dynamic>.from(currentProject.extraFields);
+      final newExtra = Map<String, dynamic>.from(additionalFields);
+      final hasExtraChanged = !_areMapsEqual(oldExtra, newExtra);
+      if (hasExtraChanged) {
+        updatedProject = _trackAdditionalFieldChanges(
+          oldExtra,
+          newExtra,
+          updatedProject,
+        );
       }
 
-      // Create final updated project
+      // Build final project
       final finalProject = updatedProject.copyWith(
         title: titleController.text.trim(),
         clientName: clientController.text.trim(),
         location: locationController.text.trim(),
-        deadline: DateTime.parse(deadlineController.text.trim()),
+        deadline: newDeadline,
         status: selectedStatus.value,
         progress: progressValue.value,
         updatedAt: DateTime.now(),
+        extraFields: newExtra, // <—— write back
       );
 
-      print('💾 Saving project with ${additionalFields.length} additional fields as top-level fields');
-
-      // Create update map with basic fields
-      final updateMap = <String, dynamic>{
+      // Prepare update map (write extraFields under a single map key)
+      final updateMap = {
         'title': finalProject.title,
         'clientName': finalProject.clientName,
         'location': finalProject.location,
@@ -392,23 +396,13 @@ class EditProjectController extends GetxController {
         'progress': finalProject.progress,
         'lastUpdates': finalProject.lastUpdates.map((u) => u.toMap()).toList(),
         'updatedAt': FieldValue.serverTimestamp(),
+        'extraFields': finalProject.extraFields, // <—— single source of truth
       };
 
-      // Add additional fields as top-level fields
-      for (final entry in additionalFields.entries) {
-        updateMap[entry.key] = entry.value;
-      }
-
-      // Remove fields that were deleted
-      for (final oldKey in oldAdditionalFields.keys) {
-        if (!additionalFields.containsKey(oldKey)) {
-          updateMap[oldKey] = FieldValue.delete();
-        }
-      }
-
-      // Save to Firestore
       await _firestore.collection('projects').doc(projectId).update(updateMap);
 
+      // Update local state and close
+      bindProject(finalProject);
       Utils.snackBar('Success', 'Project updated successfully.');
       Get.back();
     } catch (e) {
@@ -420,56 +414,54 @@ class EditProjectController extends GetxController {
     }
   }
 
-  // Get current additional fields from Firestore
-  Future<Map<String, dynamic>> _getCurrentAdditionalFields() async {
-    try {
-      final doc = await _firestore.collection('projects').doc(projectId).get();
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        return Project.getAdditionalFieldsFromData(data);
-      }
-    } catch (e) {
-      print('❌ Error getting current additional fields: $e');
-    }
-    return {};
-  }
-
-  // Helper method to track additional field changes
-  void _trackAdditionalFieldChanges(
+  /// Returns an updated Project with lastUpdates entries for add/update/remove of extra fields
+  Project _trackAdditionalFieldChanges(
       Map<String, dynamic> oldFields,
       Map<String, dynamic> newFields,
-      Project project,
+      Project proj,
       ) {
+    var updated = proj;
+
+    // Added or Updated
     for (final key in newFields.keys) {
+      final newVal = newFields[key];
       if (!oldFields.containsKey(key)) {
-        project.addAdditionalFieldUpdate(key, 'added', _currentUserId, _currentUserName);
-      } else if (oldFields[key] != newFields[key]) {
-        project.addAdditionalFieldUpdate(key, 'updated', _currentUserId, _currentUserName);
+        updated = updated.addAdditionalFieldUpdate(
+          key, 'added', _currentUserId, _currentUserName,
+        );
+      } else if (oldFields[key] != newVal) {
+        updated = updated.addAdditionalFieldUpdate(
+          key, 'updated', _currentUserId, _currentUserName,
+        );
       }
     }
 
+    // Removed
     for (final key in oldFields.keys) {
       if (!newFields.containsKey(key)) {
-        project.addAdditionalFieldRemovedUpdate(key, _currentUserId, _currentUserName);
+        updated = updated.addAdditionalFieldRemovedUpdate(
+          key, _currentUserId, _currentUserName,
+        );
       }
     }
+
+    return updated;
   }
 
-  // Helper method to compare maps
-  bool _areMapsEqual(Map<String, dynamic> map1, Map<String, dynamic> map2) {
-    if (map1.length != map2.length) return false;
-    for (final key in map1.keys) {
-      if (!map2.containsKey(key) || map1[key] != map2[key]) {
-        return false;
-      }
+  // Compare maps shallowly (sufficient for string/number values)
+  bool _areMapsEqual(Map<String, dynamic> a, Map<String, dynamic> b) {
+    if (a.length != b.length) return false;
+    for (final k in a.keys) {
+      if (!b.containsKey(k)) return false;
+      if (a[k] != b[k]) return false;
     }
     return true;
   }
 
-  // Helper methods
+  // Helper getters
   String get _currentUserId => auth.currentUser?.uid ?? '';
-  String get _currentUserName => auth.currentUser?.displayName ??
-      auth.currentUser?.email?.split('@')[0] ?? 'Unknown User';
+  String get _currentUserName =>
+      auth.currentUser?.displayName ?? auth.currentUser?.email?.split('@')[0] ?? 'Unknown User';
 
   @override
   void onClose() {
@@ -477,6 +469,8 @@ class EditProjectController extends GetxController {
     clientController.dispose();
     locationController.dispose();
     deadlineController.dispose();
+    for (final c in keyControllers.values) c.dispose();
+    for (final c in valueControllers.values) c.dispose();
     super.onClose();
   }
 }

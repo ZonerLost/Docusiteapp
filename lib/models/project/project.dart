@@ -1,74 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'collaborator.dart';
+import 'package:docu_site/models/project/project_update.dart';
+import '../../services/date_parse/date_parse_service.dart';
+import '../collaborator/collaborator.dart';
 import 'project_file.dart';
 
-class ProjectUpdate {
-  final String id;
-  final String message;
-  final String userId;
-  final String userName;
-  final DateTime timestamp;
-  final String type;
-
-  ProjectUpdate({
-    required this.id,
-    required this.message,
-    required this.userId,
-    required this.userName,
-    required this.timestamp,
-    required this.type,
-  });
-
-  factory ProjectUpdate.fromMap(Map<String, dynamic> data) {
-    return ProjectUpdate(
-      id: data['id'] as String? ?? '',
-      message: data['message'] as String? ?? '',
-      userId: data['userId'] as String? ?? '',
-      userName: data['userName'] as String? ?? '',
-      timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      type: data['type'] as String? ?? 'updated',
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'message': message,
-      'userId': userId,
-      'userName': userName,
-      'timestamp': Timestamp.fromDate(timestamp),
-      'type': type,
-    };
-  }
-
-  factory ProjectUpdate.fromJson(Map<String, dynamic> json) => ProjectUpdate(
-    id: json['id'] ?? '',
-    message: json['message'] ?? '',
-    userId: json['userId'] ?? '',
-    userName: json['userName'] ?? '',
-    timestamp: (json['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    type: json['type'] ?? 'updated',
-  );
-
-  // CopyWith method for ProjectUpdate
-  ProjectUpdate copyWith({
-    String? id,
-    String? message,
-    String? userId,
-    String? userName,
-    DateTime? timestamp,
-    String? type,
-  }) {
-    return ProjectUpdate(
-      id: id ?? this.id,
-      message: message ?? this.message,
-      userId: userId ?? this.userId,
-      userName: userName ?? this.userName,
-      timestamp: timestamp ?? this.timestamp,
-      type: type ?? this.type,
-    );
-  }
-}
 
 class Project {
   final String id;
@@ -84,7 +19,9 @@ class Project {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<ProjectUpdate> lastUpdates;
-  // Additional dynamic fields will be stored as top-level fields in Firestore
+
+  /// NEW: single source of truth for dynamic/base-extra fields
+  final Map<String, dynamic> extraFields;
 
   Project({
     required this.id,
@@ -100,9 +37,9 @@ class Project {
     required this.createdAt,
     required this.updatedAt,
     this.lastUpdates = const [],
+    this.extraFields = const {}, // NEW
   });
 
-  // CopyWith method for Project
   Project copyWith({
     String? id,
     String? title,
@@ -117,6 +54,7 @@ class Project {
     DateTime? createdAt,
     DateTime? updatedAt,
     List<ProjectUpdate>? lastUpdates,
+    Map<String, dynamic>? extraFields, // NEW
   }) {
     return Project(
       id: id ?? this.id,
@@ -132,68 +70,95 @@ class Project {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       lastUpdates: lastUpdates ?? this.lastUpdates,
+      extraFields: extraFields ?? this.extraFields, // NEW
     );
   }
 
-  // List of possible statuses for the UI dropdowns
-  static const List<String> statusOptions = ['In Progress', 'Completed', 'On Hold', 'Pending'];
-
-  // Static list of possible collaborator roles for the UI dropdowns
-  static const List<String> roleOptions = ['Contractor', 'Client', 'Project Owner', 'Engineer'];
-
-  // List of reserved field names that cannot be used as additional fields
-  static const List<String> reservedFieldNames = [
-    'id', 'title', 'ownerId', 'clientName', 'status', 'location', 'deadline',
-    'collaborators', 'files', 'progress', 'createdAt', 'updatedAt', 'lastUpdates'
+  // Keep the spelling you already use in UI
+  static const List<String> statusOptions = [
+    'In Progress',
+    'Completed',
+    'On Hold',
+    'Pending'
   ];
 
-  // Factory to create a Project from a Firestore Document Snapshot
+  static const List<String> roleOptions = [
+    'Contractor',
+    'Client',
+    'Project Owner',
+    'Engineer'
+  ];
+
+  static const List<String> reservedFieldNames = [
+    'id',
+    'title',
+    'ownerId',
+    'clientName',
+    'status',
+    'location',
+    'deadline',
+    'collaborators',
+    'files',
+    'progress',
+    'createdAt',
+    'updatedAt',
+    'lastUpdates',
+    'extraFields', // reserve the container too
+  ];
+
+  /// Tolerant factory from Firestore snapshot
   factory Project.fromSnapshot(DocumentSnapshot doc) {
-    final Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = asMap(doc.data());
 
-    // Parse Collaborators list
-    final List<Collaborator> collaborators = (data['collaborators'] as List<dynamic>? ?? [])
-        .map((e) => Collaborator.fromMap(e as Map<String, dynamic>))
-        .toList();
+    final collaborators = (data['collaborators'] is List)
+        ? asListOfMap(data['collaborators'])
+        .map((m) => Collaborator.fromMap(m))
+        .toList()
+        : <Collaborator>[];
 
-    // Parse Files list
-    final List<ProjectFile> files = (data['files'] as List<dynamic>? ?? [])
-        .map((e) => ProjectFile.fromMap(e as Map<String, dynamic>, e['id'] ?? ''))
-        .toList();
+    final files = (data['files'] is List)
+        ? asListOfMap(data['files'])
+        .map((m) => ProjectFile.fromMapLoose(m))
+        .toList()
+        : <ProjectFile>[];
 
-    // Parse LastUpdates list
-    final List<ProjectUpdate> lastUpdates = (data['lastUpdates'] as List<dynamic>? ?? [])
-        .map((e) => ProjectUpdate.fromMap(e as Map<String, dynamic>))
-        .toList();
+    final lastUpdates = (data['lastUpdates'] is List)
+        ? asListOfMap(data['lastUpdates'])
+        .map((m) => ProjectUpdate.fromMap(m))
+        .toList()
+        : <ProjectUpdate>[];
 
-    // Helper to safely parse numbers which might be stored as int or double in Firestore
-    double parseProgress(dynamic value) {
-      if (value is int) return value.toDouble();
-      if (value is double) return value;
-      return 0.0;
-    }
+    final created = parseTs(data['createdAt']) ?? DateTime.now();
+    final updated = parseTs(data['updatedAt']) ?? created;
+    final deadlineDt = parseTs(data['deadline']) ?? DateTime.now();
+
+    // NEW: read explicit extraFields or harvest legacy top-level extras
+    final explicitExtra =
+    (data['extraFields'] is Map) ? asMap(data['extraFields']) : <String, dynamic>{};
+    final legacyExtra = getAdditionalFieldsFromData(data); // ignores reserved keys
+    final mergedExtra = {...legacyExtra, ...explicitExtra}; // prefer explicit map
 
     return Project(
       id: doc.id,
-      title: data['title'] as String? ?? 'Untitled Project',
-      ownerId: data['ownerId'] as String? ?? 'unknown',
-      clientName: data['clientName'] as String? ?? 'N/A',
-      status: data['status'] as String? ?? Project.statusOptions.first,
-      location: data['location'] as String? ?? 'Not specified',
-      deadline: (data['deadline'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      progress: parseProgress(data['progress']),
+      title: (data['title'] ?? 'Untitled Project').toString(),
+      ownerId: (data['ownerId'] ?? 'unknown').toString(),
+      clientName: (data['clientName'] ?? 'N/A').toString(),
+      status: (data['status'] ?? statusOptions.first).toString(),
+      location: (data['location'] ?? 'Not specified').toString(),
+      deadline: deadlineDt,
+      progress: parseDouble(data['progress']),
       collaborators: collaborators,
       files: files,
       lastUpdates: lastUpdates,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: created,
+      updatedAt: updated,
+      extraFields: mergedExtra, // NEW
     );
   }
 
-  // Convert Project to a Map for Firestore storage
-  // Additional fields will be added to this map dynamically
+  /// Map for Firestore writes (general update)
   Map<String, dynamic> toMap() {
-    final map = <String, dynamic>{
+    return {
       'title': title,
       'ownerId': ownerId,
       'clientName': clientName,
@@ -206,41 +171,106 @@ class Project {
       'lastUpdates': lastUpdates.map((u) => u.toMap()).toList(),
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
+      'extraFields': extraFields, // NEW
     };
-
-    return map;
   }
 
-  // Method to get all additional fields from a Firestore document
-  static Map<String, dynamic> getAdditionalFieldsFromData(Map<String, dynamic> data) {
-    final additionalFields = <String, dynamic>{};
+  Map<String, dynamic> toCreateMap() {
+    return {
+      'title': title,
+      'ownerId': ownerId,
+      'clientName': clientName,
+      'status': status,
+      'location': location,
+      'deadline': Timestamp.fromDate(deadline),
+      'progress': progress,
+      'collaborators': collaborators.map((c) => c.toMap()).toList(),
+      'files': files.map((f) => f.toMap()).toList(),
+      'lastUpdates': lastUpdates.map((u) => u.toMap()).toList(),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+      'extraFields': extraFields, // NEW
+    };
+  }
 
+  Map<String, dynamic> toUpdateMap() {
+    return {
+      'title': title,
+      'ownerId': ownerId,
+      'clientName': clientName,
+      'status': status,
+      'location': location,
+      'deadline': Timestamp.fromDate(deadline),
+      'progress': progress,
+      'collaborators': collaborators.map((c) => c.toMap()).toList(),
+      'files': files.map((f) => f.toMap()).toList(),
+      'lastUpdates': lastUpdates.map((u) => u.toMap()).toList(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'extraFields': extraFields, // NEW
+    };
+  }
+
+  /// Harvest legacy top-level extra fields (for backwards compatibility)
+  static Map<String, dynamic> getAdditionalFieldsFromData(
+      Map<String, dynamic> data) {
+    final additionalFields = <String, dynamic>{};
     for (final key in data.keys) {
       if (!reservedFieldNames.contains(key)) {
         additionalFields[key] = data[key];
       }
     }
-
     return additionalFields;
   }
 
-  factory Project.fromJson(Map<String, dynamic> json) => Project(
-    id: json['id'] ?? '',
-    title: json['title'] ?? '',
-    clientName: json['clientName'] ?? '',
-    location: json['location'] ?? '',
-    deadline: (json['deadline'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    ownerId: json['ownerId'] ?? '',
-    progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
-    collaborators: (json['collaborators'] as List<dynamic>?)?.map((c) => Collaborator.fromJson(c as Map<String, dynamic>)).toList() ?? [],
-    files: (json['files'] as List<dynamic>?)?.map((f) => ProjectFile.fromJson(f as Map<String, dynamic>)).toList() ?? [],
-    lastUpdates: (json['lastUpdates'] as List<dynamic>?)?.map((u) => ProjectUpdate.fromJson(u as Map<String, dynamic>)).toList() ?? [],
-    createdAt: (json['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    updatedAt: (json['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    status: json['status'] ?? 'In progress',
-  );
+  /// Tolerant fromJson
+  factory Project.fromJson(Map<String, dynamic> json) {
+    final data = asMap(json);
 
-  // Helper method to add a new update with short descriptive messages
+    final collaborators = (data['collaborators'] is List)
+        ? asListOfMap(data['collaborators'])
+        .map((m) => Collaborator.fromMap(m))
+        .toList()
+        : <Collaborator>[];
+
+    final files = (data['files'] is List)
+        ? asListOfMap(data['files'])
+        .map((m) => ProjectFile.fromMapLoose(m))
+        .toList()
+        : <ProjectFile>[];
+
+    final lastUpdates = (data['lastUpdates'] is List)
+        ? asListOfMap(data['lastUpdates'])
+        .map((m) => ProjectUpdate.fromMap(m))
+        .toList()
+        : <ProjectUpdate>[];
+
+    final created = parseTs(data['createdAt']) ?? DateTime.now();
+    final updated = parseTs(data['updatedAt']) ?? created;
+    final deadlineDt = parseTs(data['deadline']) ?? DateTime.now();
+
+    final extra = (data['extraFields'] is Map)
+        ? asMap(data['extraFields'])
+        : <String, dynamic>{};
+
+    return Project(
+      id: (data['id'] ?? '').toString(),
+      title: (data['title'] ?? '').toString(),
+      clientName: (data['clientName'] ?? '').toString(),
+      location: (data['location'] ?? '').toString(),
+      deadline: deadlineDt,
+      ownerId: (data['ownerId'] ?? '').toString(),
+      progress: parseDouble(data['progress']),
+      collaborators: collaborators,
+      files: files,
+      lastUpdates: lastUpdates,
+      createdAt: created,
+      updatedAt: updated,
+      status: (data['status'] ?? 'In progress').toString(),
+      extraFields: extra, // NEW
+    );
+  }
+
+
   Project addUpdate({
     required String message,
     required String userId,
@@ -256,10 +286,7 @@ class Project {
       type: type,
     );
 
-    // Create a new list with the new update at the beginning
     final updatedLastUpdates = [newUpdate, ...lastUpdates];
-
-    // Limit the number of stored updates to prevent unbounded growth (e.g., keep last 50)
     final limitedLastUpdates = updatedLastUpdates.length > 50
         ? updatedLastUpdates.sublist(0, 50)
         : updatedLastUpdates;
@@ -288,7 +315,6 @@ class Project {
     'field_removed',
   ];
 
-  // New methods for invite tracking
   Project addInviteSentUpdate(String memberName, String userId, String userName) {
     return addUpdate(
       message: 'Invite sent to $memberName',
@@ -316,7 +342,6 @@ class Project {
     );
   }
 
-  // Convenience methods for common update types with short descriptive messages
   Project addCreationUpdate(String userId, String userName) {
     return addUpdate(
       message: 'Project Created',
@@ -371,7 +396,6 @@ class Project {
     );
   }
 
-  // Methods for additional field updates
   Project addAdditionalFieldUpdate(String fieldName, String action, String userId, String userName) {
     return addUpdate(
       message: 'Additional field "$fieldName" was $action',

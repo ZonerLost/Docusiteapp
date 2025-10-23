@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../config/routes/route_names.dart';
 import '../../../../utils/Utils.dart';
 
-class LoginViewModel extends GetxController {
+class LoginController extends GetxController {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
 

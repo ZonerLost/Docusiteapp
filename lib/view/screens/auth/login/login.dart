@@ -15,12 +15,13 @@ import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:get/get.dart';
 
-import '../../../../view_model/auth/login_view_model.dart';
+import '../../../../controllers/auth/login_controller.dart';
+
 
 class Login extends StatelessWidget {
   Login({super.key});
 
-  final LoginViewModel _viewModel = Get.put(LoginViewModel());
+  final LoginController _viewModel = Get.put(LoginController());
 
   @override
   Widget build(BuildContext context) {
