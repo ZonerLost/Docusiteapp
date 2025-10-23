@@ -82,6 +82,17 @@
 
 	<key>NSUserTrackingUsageDescription</key>
 	<string>This app uses notifications to alert you of updates.</string>
-
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- Replace this with your REVERSED_CLIENT_ID if it's different -->
+				<string>com.googleusercontent.apps.1072828557755-kedp0migof2qvfn603vr2pdrk4hhh5pb</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
