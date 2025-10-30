@@ -118,8 +118,10 @@ class All extends StatelessWidget {
               itemCount: filteredProjects.length,
               itemBuilder: (context, index) {
                 final project = filteredProjects.elementAt(index);
-                return ProjectCard(project: project);
-              },
+                return ProjectCard(
+                  project: project,
+                  index: index, // 👈 add this line
+                );              },
             ),
             const SizedBox(height: 80),
           ],

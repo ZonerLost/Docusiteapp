@@ -311,37 +311,37 @@ class AddNewProject extends StatelessWidget {
                     color: kQuaternaryColor,
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    spacing: 20,
-                    children: [
-                      Row(
-                        spacing: 4,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CustomCheckBox(
-                            circularRadius: 5,
-                            isActive: viewModel.hasViewAccess.value,
-                            onTap: () => viewModel.toggleAccess(false),
-                            radius: 20,
-                          ),
-                          MyText(text: 'View Access', size: 14, weight: FontWeight.w500),
-                        ],
-                      ),
-                      Row(
-                        spacing: 4,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CustomCheckBox(
-                            circularRadius: 5,
-                            isActive: viewModel.hasEditAccess.value,
-                            onTap: () => viewModel.toggleAccess(true),
-                            radius: 20,
-                          ),
-                          MyText(text: 'Edit Access', size: 14, weight: FontWeight.w500),
-                        ],
-                      ),
-                    ],
-                  ),
+                  // Row(
+                  //   spacing: 20,
+                  //   children: [
+                  //     Row(
+                  //       spacing: 4,
+                  //       mainAxisSize: MainAxisSize.min,
+                  //       children: [
+                  //         CustomCheckBox(
+                  //           circularRadius: 5,
+                  //           isActive: viewModel.hasViewAccess.value,
+                  //           onTap: () => viewModel.toggleAccess(false),
+                  //           radius: 20,
+                  //         ),
+                  //         MyText(text: 'View Access', size: 14, weight: FontWeight.w500),
+                  //       ],
+                  //     ),
+                  //     Row(
+                  //       spacing: 4,
+                  //       mainAxisSize: MainAxisSize.min,
+                  //       children: [
+                  //         CustomCheckBox(
+                  //           circularRadius: 5,
+                  //           isActive: viewModel.hasEditAccess.value,
+                  //           onTap: () => viewModel.toggleAccess(true),
+                  //           radius: 20,
+                  //         ),
+                  //         MyText(text: 'Edit Access', size: 14, weight: FontWeight.w500),
+                  //       ],
+                  //     ),
+                  //   ],
+                  // ),
                   Container(
                     margin: const EdgeInsets.only(top: 16),
                     padding: const EdgeInsets.all(12),

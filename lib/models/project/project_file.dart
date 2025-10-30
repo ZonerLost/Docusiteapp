@@ -26,6 +26,7 @@ class ProjectFile {
   final DateTime? lastUpdated;  // make nullable to tolerate missing
   final int newCommentsCount;
   final int newImagesCount;
+  final String uploadedById;
 
   ProjectFile({
     required this.id,
@@ -33,6 +34,7 @@ class ProjectFile {
     required this.fileUrl,
     required this.category,
     required this.uploadedBy,
+    required this.uploadedById,
     required this.lastUpdated,
     this.newCommentsCount = 0,
     this.newImagesCount = 0,
@@ -46,6 +48,7 @@ class ProjectFile {
       fileUrl: (map['fileUrl'] ?? '').toString(),
       category: (map['category'] ?? '').toString(),
       uploadedBy: (map['uploadedBy'] ?? '').toString(),
+        uploadedById: (map['uploadedById'] ?? '').toString(),
       lastUpdated: _parseTs(map['lastUpdated']),
       newCommentsCount: _asInt(map['newCommentsCount']),
       newImagesCount: _asInt(map['newImagesCount']),
@@ -65,6 +68,7 @@ class ProjectFile {
       if (lastUpdated != null) 'lastUpdated': Timestamp.fromDate(lastUpdated!),
       'newCommentsCount': newCommentsCount,
       'newImagesCount': newImagesCount,
+      'uploadedById': uploadedById,
     };
   }
 
@@ -72,6 +76,7 @@ class ProjectFile {
     return ProjectFile(
       id: (json['id'] ?? '').toString(),
       fileName: (json['fileName'] ?? '').toString(),
+      uploadedById: (json['uploadedById'] ?? '').toString(),
       fileUrl: (json['fileUrl'] ?? '').toString(),
       category: (json['category'] ?? '').toString(),
       uploadedBy: (json['uploadedBy'] ?? '').toString(),

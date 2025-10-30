@@ -47,6 +47,91 @@ class HomeController extends GetxController {
   final Map<String, TextEditingController> createValueControllers = {};
 
 
+  // In HomeController, update the toggleAccess method and add new methods:
+
+// Remove the old toggleAccess method and replace with these:
+  void toggleViewAccess(bool value) {
+    hasViewAccess.value = value;
+    // If view access is turned off, edit access must also be off
+    if (!value) {
+      hasEditAccess.value = false;
+    }
+  }
+
+  void toggleEditAccess(bool value) {
+    hasEditAccess.value = value;
+    // If edit access is turned on, view access must also be on
+    if (value) {
+      hasViewAccess.value = true;
+    }
+  }
+
+// Update the sendMemberInvite method to use the correct access values
+  Future<void> sendMemberInvite() async {
+    final name = memberNameController.text.trim();
+    final email = memberEmailController.text.trim();
+    final role = memberRoleController.text.trim();
+    final finalRole = role.isEmpty ? 'Member' : role;
+
+    if (name.isEmpty || email.isEmpty || !GetUtils.isEmail(email)) {
+      Utils.snackBar('Validation', 'Please enter a valid name and email address.');
+      return;
+    }
+
+    isInvitingMember.value = true;
+
+    try {
+      final userQuery = await firestore
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (userQuery.docs.isEmpty) {
+        Utils.snackBar('Error', 'Not an authorized user.');
+        return;
+      }
+
+      final userDoc = userQuery.docs.first;
+      final userData = userDoc.data();
+      final userId = userDoc.id;
+      final userName = userData['displayName'] ?? name;
+      final userPhotoUrl = userData['photoUrl'] ?? '';
+
+      if (assignedMembers.any((m) => m.email == email)) {
+        Utils.snackBar('Info', '$userName is already invited.');
+        return;
+      }
+
+      final newMember = Collaborator(
+        uid: userId,
+        email: email,
+        name: userName,
+        canEdit: hasEditAccess.value, // Use the actual edit access value
+        photoUrl: userPhotoUrl,
+        role: finalRole,
+      );
+
+      assignedMembers.add(newMember);
+      Get.back();
+
+      memberNameController.clear();
+      memberEmailController.clear();
+      memberRoleController.clear();
+
+      // Reset access to default after adding member
+      hasViewAccess.value = true;
+      hasEditAccess.value = false;
+
+      Utils.snackBar('Success', '$userName added with role $finalRole.');
+    } catch (e) {
+      Utils.snackBar('Error', 'Failed to invite member: $e');
+    } finally {
+      isInvitingMember.value = false;
+    }
+  }
+
+
 
   void addCreateExtraField(String key, String value) {
     final k = key.trim();
@@ -500,65 +585,6 @@ class HomeController extends GetxController {
     }
   }
 
-  Future<void> sendMemberInvite() async {
-    final name = memberNameController.text.trim();
-    final email = memberEmailController.text.trim();
-    final role = memberRoleController.text.trim();
-    final finalRole = role.isEmpty ? 'Member' : role;
-
-    if (name.isEmpty || email.isEmpty || !GetUtils.isEmail(email)) {
-      Utils.snackBar('Validation', 'Please enter a valid name and email address.');
-      return;
-    }
-
-    isInvitingMember.value = true;
-
-    try {
-      final userQuery = await firestore
-          .collection('users')
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
-
-      if (userQuery.docs.isEmpty) {
-        Utils.snackBar('Error', 'Not an authorized user.');
-        return;
-      }
-
-      final userDoc = userQuery.docs.first;
-      final userData = userDoc.data();
-      final userId = userDoc.id;
-      final userName = userData['displayName'] ?? name;
-      final userPhotoUrl = userData['photoUrl'] ?? '';
-
-      if (assignedMembers.any((m) => m.email == email)) {
-        Utils.snackBar('Info', '$userName is already invited.');
-        return;
-      }
-
-      final newMember = Collaborator(
-        uid: userId,
-        email: email,
-        name: userName,
-        canEdit: hasEditAccess.value,
-        photoUrl: userPhotoUrl,
-        role: finalRole,
-      );
-
-      assignedMembers.add(newMember);
-      Get.back();
-
-      memberNameController.clear();
-      memberEmailController.clear();
-      memberRoleController.clear();
-
-      Utils.snackBar('Success', '$userName added with role $finalRole.');
-    } catch (e) {
-      Utils.snackBar('Error', 'Failed to invite member: $e');
-    } finally {
-      isInvitingMember.value = false;
-    }
-  }
 
   Future<void> acceptInvite(String inviteId, String projectId) async {
     try {

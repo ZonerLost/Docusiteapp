@@ -1,28 +1,22 @@
 import 'package:flutter/cupertino.dart';
 import 'package:get/Get.dart';
 import 'package:get/get_core/src/get_main.dart';
-import 'package:get/get_rx/src/rx_types/rx_types.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_sizes.dart';
 import '../../controllers/home/home_controller.dart';
-import '../../controllers/project/project_detail_controller.dart';
-import '../../models/project/project.dart';
-import '../../utils/Utils.dart';
-import 'custom_drop_down_widget.dart';
+import 'custom_check_box_widget.dart';
 import 'my_button_widget.dart';
 import 'my_text_field_widget.dart';
 import 'my_text_widget.dart';
 
-
-// If you have an InviteNewMember widget, update it similarly:
 class InviteNewMember extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final HomeController viewModel = Get.find();
 
     return Container(
-      height: Get.height * 0.6,
+      height: Get.height * 0.7, // Increased height to accommodate access controls
       margin: EdgeInsets.only(top: 55),
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -70,18 +64,98 @@ class InviteNewMember extends StatelessWidget {
                   hintText: 'Enter email address',
                 ),
                 SizedBox(height: 16),
-                // CHANGED: Replace dropdown with text field for custom role
                 SimpleTextField(
-                  controller: viewModel.memberRoleController, // Add this controller
+                  controller: viewModel.memberRoleController,
                   labelText: 'Role',
                   hintText: 'e.g., Client, Engineer, Project Manager, etc.',
-                  onChanged: (value) {
-                    viewModel.selectedMemberRole.value = value;
-                  },
+                ),
+                SizedBox(height: 20),
+
+                // ACCESS CONTROLS - MOVED INSIDE THE INVITE DIALOG
+                MyText(
+                  text: 'Access Level',
+                  size: 16,
+                  weight: FontWeight.w600,
+                  paddingBottom: 12,
+                ),
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: kFillColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: kBorderColor),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // View Access Checkbox
+                      Row(
+                        children: [
+                          CustomCheckBox(
+                            circularRadius: 5,
+                            isActive: viewModel.hasViewAccess.value,
+                            onTap: () => viewModel.toggleViewAccess(!viewModel.hasViewAccess.value),
+                            radius: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: MyText(
+                              text: 'View Access',
+                              size: 14,
+                              weight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 12),
+
+                      // Edit Access Checkbox
+                      Row(
+                        children: [
+                          CustomCheckBox(
+                            circularRadius: 5,
+                            isActive: viewModel.hasEditAccess.value,
+                            onTap: viewModel.hasViewAccess.value
+                                ? () => viewModel.toggleEditAccess(!viewModel.hasEditAccess.value)
+                                : (){}, // Disable if view access is off
+                            radius: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                MyText(
+                                  text: 'Edit Access',
+                                  size: 14,
+                                  weight: FontWeight.w500,
+                                  color: viewModel.hasViewAccess.value ? kTertiaryColor : kQuaternaryColor,
+                                ),
+                                if (!viewModel.hasViewAccess.value)
+                                  MyText(
+                                    text: 'Requires View Access',
+                                    size: 10,
+                                    color: kQuaternaryColor,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      MyText(
+                        text: viewModel.hasEditAccess.value
+                            ? 'Member can view and edit project details'
+                            : 'Member can only view project details',
+                        size: 12,
+                        color: kQuaternaryColor,
+                      ),
+                    ],
+                  ),
                 ),
                 SizedBox(height: 16),
                 MyText(
-                  text: 'The member will be added to your project with the specified role.',
+                  text: 'The member will be added to your project with the specified role and access level.',
                   size: 12,
                   color: kQuaternaryColor,
                   textAlign: TextAlign.center,

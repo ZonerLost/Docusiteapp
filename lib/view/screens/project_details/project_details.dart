@@ -4,11 +4,12 @@ import 'package:docu_site/constants/app_images.dart';
 import 'package:docu_site/constants/app_sizes.dart';
 import 'package:docu_site/main.dart';
 import 'package:docu_site/view/screens/chat/chat_screen.dart';
-import 'package:docu_site/view/screens/project_details/pdf_details.dart';
+import 'package:docu_site/view/pdf_details/pdf_details.dart';
 import 'package:docu_site/view/widget/common_image_view_widget.dart';
 import 'package:docu_site/view/widget/custom_drop_down_widget.dart';
 import 'package:docu_site/view/widget/my_button_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -392,15 +393,31 @@ class _FilesAndDocuments extends StatelessWidget {
         padding: AppSizes.DEFAULT,
         shrinkWrap: true,
         children: [
-          MyText(
-            onTap: () {
-              Get.bottomSheet(_AddNewPdf(controller: controller), isScrollControlled: true);
+          Builder(
+            builder: (_) {
+              final currentUser = FirebaseAuth.instance.currentUser;
+              final project = controller.project.value;
+
+              final isOwner = controller.isCurrentUserOwner;
+              final isCollaborator = project?.collaborators
+                  .any((c) => c.uid == currentUser?.uid) ?? false;
+
+              if (!isOwner && !isCollaborator) {
+                return const SizedBox.shrink(); // hide button
+              }
+
+              return MyText(
+                onTap: () {
+                  Get.bottomSheet(_AddNewPdf(controller: controller),
+                      isScrollControlled: true);
+                },
+                text: '+ Add new PDF',
+                size: 16,
+                weight: FontWeight.w500,
+                color: kSecondaryColor,
+                paddingBottom: 10,
+              );
             },
-            text: '+ Add new PDF',
-            size: 16,
-            weight: FontWeight.w500,
-            color: kSecondaryColor,
-            paddingBottom: 10,
           ),
 
           if (fileCategories.isEmpty)
@@ -431,7 +448,7 @@ class _FilesAndDocuments extends StatelessWidget {
                   Row(
                     children: [
                       MyText(
-                        text: category,
+                        text: category,size: 11,
                         weight: FontWeight.w500,
                       ),
                       MyText(
@@ -497,7 +514,7 @@ class _FilesAndDocuments extends StatelessWidget {
                                   height: 40,
                                   width: 40,
                                 ),
-                                SizedBox(width: 8),
+                                const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -518,9 +535,61 @@ class _FilesAndDocuments extends StatelessWidget {
                                     ],
                                   ),
                                 ),
+
+                                Builder(
+                                  builder: (_) {
+                                    final currentUser = FirebaseAuth.instance.currentUser;
+                                    final canDelete =
+                                        // controller.isCurrentUserOwner ||
+                                            file.uploadedById == currentUser?.uid;
+
+                                    if (canDelete) {
+                                      return GestureDetector(
+                                        onTap: () async {
+                                          final confirm = await Get.dialog<bool>(
+                                            AlertDialog(
+                                              title: const Text('Delete File'),
+                                              content: Text(
+                                                'Are you sure you want to delete "${file.fileName}"?\n'
+                                                    'This action cannot be undone.',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Get.back(result: false),
+                                                  child: const Text('Cancel'),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () => Get.back(result: true),
+                                                  child: const Text(
+                                                    'Delete',
+                                                    style: TextStyle(color: Colors.red),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+
+                                          if (confirm == true) {
+                                            await controller.deleteFile(file);
+                                          }
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                                          child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 24),
+                                        ),
+                                      );
+                                    }
+
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
+
+
+                                // existing arrow icon
                                 Image.asset(Assets.imagesArrowNext, height: 24),
                               ],
                             ),
+
                           ],
                         ),
                       ),
@@ -768,7 +837,7 @@ class _AddNewPdfState extends State<_AddNewPdf> {
   final List<String> pdfCategories = [
     '🏛 Structural',
     '🧱 Architectural',
-    '⚙️ MEP',
+    '⚙️ MEP (Mechanical, Electrical and Plumbing)',
     '🪑 Interior',
     '📁 Others',
   ];

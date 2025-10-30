@@ -44,55 +44,29 @@ class ProjectDetailsController extends GetxController {
     _streamProjectDetails();
   }
 
-  void _streamProjectDetails() {
-    _projectService.streamProject(projectId).listen((projectData) {
-      project.value = projectData;
-      if (projectData == null && project.value == null) {
-        // Utils.snackBar('Error', 'Project not found or you do not have access.');
-      }
-    }).onError((error) {
-      Utils.snackBar('Error', 'Failed to fetch project details: ${error.toString()}');
-    });
-  }
 
-  Map<String, List<ProjectFile>> get groupedFiles {
-    if (project.value == null) return {};
+  // Add these properties to ProjectDetailsController class
+  final RxBool hasViewAccess = true.obs;
+  final RxBool hasEditAccess = false.obs;
 
-    final Map<String, List<ProjectFile>> map = {};
-    for (var file in project.value!.files) {
-      if (file.category.isNotEmpty) {
-        if (!map.containsKey(file.category)) {
-          map[file.category] = [];
-        }
-        map[file.category]!.add(file);
-      }
+// Add these methods to ProjectDetailsController class
+  void toggleViewAccess(bool value) {
+    hasViewAccess.value = value;
+    // If view access is turned off, edit access must also be off
+    if (!value) {
+      hasEditAccess.value = false;
     }
-    return map;
   }
 
-  int get memberCount => project.value?.collaborators.length ?? 0;
-
-  String get projectOwnerName {
-    final ownerId = project.value?.ownerId;
-    if (ownerId == null) return 'Unknown Owner';
-
-    final owner = project.value?.collaborators.firstWhereOrNull(
-          (c) => c.uid == ownerId,
-    );
-    return owner?.name ?? 'Unknown Owner';
+  void toggleEditAccess(bool value) {
+    hasEditAccess.value = value;
+    // If edit access is turned on, view access must also be on
+    if (value) {
+      hasViewAccess.value = true;
+    }
   }
 
-  // Check if current user is the project owner
-  bool get isCurrentUserOwner {
-    final currentUser = auth.currentUser;
-    return currentUser != null && project.value?.ownerId == currentUser.uid;
-  }
-
-  // Get current user info for updates
-  String get _currentUserId => auth.currentUser?.uid ?? '';
-  String get _currentUserName => auth.currentUser?.displayName ?? auth.currentUser?.email?.split('@')[0] ?? 'Unknown User';
-
-  // New method for inviting members to existing project with update tracking
+// Update the inviteMemberToProject method to use access controls
   Future<void> inviteMemberToProject() async {
     final name = memberNameController.text.trim();
     final email = memberEmailController.text.trim();
@@ -162,13 +136,17 @@ class ProjectDetailsController extends GetxController {
       // Update project with the new update
       await _projectService.updateProject(projectId, updatedProject);
 
-      // Send the invitation
+      // Send the invitation with access level
       await _sendProjectInvite(email, userName, finalRole);
 
       Get.back();
       memberNameController.clear();
       memberEmailController.clear();
-      selectedMemberRole.value = Project.roleOptions.first;
+      memberRoleController.clear();
+
+      // Reset access controls after successful invitation
+      hasViewAccess.value = true;
+      hasEditAccess.value = false;
 
       Utils.snackBar('Success', 'Invitation sent to $userName successfully.');
 
@@ -179,6 +157,7 @@ class ProjectDetailsController extends GetxController {
     }
   }
 
+// Update the _sendProjectInvite method to include access level
   Future<void> _sendProjectInvite(String email, String userName, String role) async {
     try {
       final currentUser = auth.currentUser!;
@@ -190,6 +169,9 @@ class ProjectDetailsController extends GetxController {
         'createdAt': FieldValue.serverTimestamp(),
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      // Determine access level based on the checkboxes
+      final accessLevel = hasEditAccess.value ? 'edit' : 'view';
 
       // Create the invitation
       final inviteRef = parentDocRef.collection('requests').doc();
@@ -205,14 +187,62 @@ class ProjectDetailsController extends GetxController {
         'role': role,
         'invitedAt': FieldValue.serverTimestamp(),
         'status': 'pending',
-        'accessLevel': role.toLowerCase() == 'editor' ? 'edit' : 'view',
+        'accessLevel': accessLevel, // Use the actual access level from checkboxes
       });
     } catch (e) {
       rethrow;
     }
   }
 
-  // Remove member from project with update tracking
+  void _streamProjectDetails() {
+    _projectService.streamProject(projectId).listen((projectData) {
+      project.value = projectData;
+      if (projectData == null && project.value == null) {
+        // Utils.snackBar('Error', 'Project not found or you do not have access.');
+      }
+    }).onError((error) {
+      Utils.snackBar('Error', 'Failed to fetch project details: ${error.toString()}');
+    });
+  }
+
+  Map<String, List<ProjectFile>> get groupedFiles {
+    if (project.value == null) return {};
+
+    final Map<String, List<ProjectFile>> map = {};
+    for (var file in project.value!.files) {
+      if (file.category.isNotEmpty) {
+        if (!map.containsKey(file.category)) {
+          map[file.category] = [];
+        }
+        map[file.category]!.add(file);
+      }
+    }
+    return map;
+  }
+
+  int get memberCount => project.value?.collaborators.length ?? 0;
+
+  String get projectOwnerName {
+    final ownerId = project.value?.ownerId;
+    if (ownerId == null) return 'Unknown Owner';
+
+    final owner = project.value?.collaborators.firstWhereOrNull(
+          (c) => c.uid == ownerId,
+    );
+    return owner?.name ?? 'Unknown Owner';
+  }
+
+  // Check if current user is the project owner
+  bool get isCurrentUserOwner {
+    final currentUser = auth.currentUser;
+    return currentUser != null && project.value?.ownerId == currentUser.uid;
+  }
+
+  // Get current user info for updates
+  String get _currentUserId => auth.currentUser?.uid ?? '';
+  String get _currentUserName => auth.currentUser?.displayName ?? auth.currentUser?.email?.split('@')[0] ?? 'Unknown User';
+
+
   Future<void> removeMember(String memberId) async {
     try {
       final member = project.value?.collaborators.firstWhereOrNull((c) => c.uid == memberId);
@@ -255,17 +285,42 @@ class ProjectDetailsController extends GetxController {
     }
   }
 
-  // Add PDF with update tracking
   Future<bool> addNewPdf(String category, String filePath, String fileName) async {
+    final currentUser = auth.currentUser;
+    if (currentUser == null) {
+      Utils.snackBar('Error', 'User not logged in.');
+      return false;
+    }
+
+    // ✅ Allow only project owner or collaborators
+    final currentProject = project.value;
+    if (currentProject == null) {
+      Utils.snackBar('Error', 'Project not found.');
+      return false;
+    }
+
+    final isOwner = currentProject.ownerId == currentUser.uid;
+    final isCollaborator = currentProject.collaborators
+        .any((c) => c.uid == currentUser.uid);
+
+    if (!isOwner && !isCollaborator) {
+      Utils.snackBar('Access Denied', 'Only project members can upload files.');
+      return false;
+    }
+
+    // continue with existing upload code...
     isUploadingFile.value = true;
     try {
-      final storageRef = _storage.ref().child('project_files/$projectId/${DateTime.now().millisecondsSinceEpoch}_$fileName');
+      final storageRef = _storage
+          .ref()
+          .child('project_files/$projectId/${DateTime.now().millisecondsSinceEpoch}_$fileName');
       final uploadTask = await storageRef.putFile(File(filePath));
       final fileUrl = await uploadTask.ref.getDownloadURL();
 
       final newFile = ProjectFile(
         id: '${DateTime.now().millisecondsSinceEpoch}',
-        uploadedBy: projectOwnerName,
+        uploadedBy: currentUser.displayName ?? currentUser.email ?? 'Unknown User',
+        uploadedById: currentUser.uid,
         fileName: fileName,
         category: category,
         fileUrl: fileUrl,
@@ -274,14 +329,6 @@ class ProjectDetailsController extends GetxController {
         newImagesCount: 0,
       );
 
-      // Get current project to add update
-      final currentProject = project.value;
-      if (currentProject == null) {
-        Utils.snackBar('Error', 'Project not found.');
-        return false;
-      }
-
-      // Add file added update
       final updatedProject = currentProject.addFileUpdate(
         fileName,
         'added',
@@ -289,7 +336,6 @@ class ProjectDetailsController extends GetxController {
         _currentUserName,
       );
 
-      // Update project with new file and update
       await _firestore.collection('projects').doc(projectId).update({
         'files': FieldValue.arrayUnion([newFile.toMap()]),
         'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
@@ -305,17 +351,27 @@ class ProjectDetailsController extends GetxController {
     }
   }
 
-  // Delete file with update tracking
   Future<void> deleteFile(ProjectFile file) async {
-    try {
-      // Get current project to add update
-      final currentProject = project.value;
-      if (currentProject == null) {
-        Utils.snackBar('Error', 'Project not found.');
-        return;
-      }
+    final currentUser = auth.currentUser;
+    if (currentUser == null) {
+      Utils.snackBar('Error', 'User not logged in.');
+      return;
+    }
 
-      // Add file deleted update
+    // ✅ Only allow owner or uploader to delete
+    final isOwner = isCurrentUserOwner;
+    final isUploader = file.uploadedById == currentUser.uid;
+
+    if (!isOwner && !isUploader) {
+      Utils.snackBar('Access Denied', 'You can only delete files you uploaded.');
+      return;
+    }
+
+    try {
+      final currentProject = project.value;
+      if (currentProject == null) return;
+
+      // Record update for history tracking
       final updatedProject = currentProject.addFileUpdate(
         file.fileName,
         'deleted',
@@ -329,21 +385,27 @@ class ProjectDetailsController extends GetxController {
         await fileRef.delete();
       } catch (e) {
         print('Error deleting file from storage: $e');
-        // Continue with removing from Firestore even if storage deletion fails
       }
 
-      // Update project - remove file and add update
+      // Remove file from Firestore array
       await _firestore.collection('projects').doc(projectId).update({
         'files': FieldValue.arrayRemove([file.toMap()]),
         'lastUpdates': updatedProject.lastUpdates.map((u) => u.toMap()).toList(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
+      // ✅ Update local project cache so UI refreshes instantly
+      project.value = updatedProject.copyWith(
+        files: currentProject.files.where((f) => f.id != file.id).toList(),
+      );
+
       Utils.snackBar('Success', '${file.fileName} deleted successfully.');
+      update();
     } catch (e) {
       Utils.snackBar('Error', 'Failed to delete file: ${e.toString()}');
     }
   }
+
 
   // Update project status with tracking
   Future<void> updateProjectStatus(String newStatus) async {

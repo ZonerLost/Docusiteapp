@@ -1,10 +1,5 @@
-
-
-
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:get/Get.dart';
-import 'package:get/get_core/src/get_main.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../constants/app_colors.dart';
@@ -15,87 +10,67 @@ import '../../../widget/common_image_view_widget.dart';
 import '../../../widget/my_text_widget.dart';
 import '../../project_details/project_details.dart';
 import 'filter_count_item.dart';
-import 'info_chip.dart';
 
 class ProjectCard extends StatelessWidget {
   final Project project;
-  const ProjectCard({required this.project});
+  final int index;
+  const ProjectCard({required this.project, required this.index, super.key});
 
-  // Helper function to format the date
-  String get formattedDeadlineDate {
-    return DateFormat('yyyy-MM-dd').format(project.deadline);
+  // ---- Helpers ----
+  String get _deadline => DateFormat('dd/MM/yy').format(project.deadline);
+
+  String get _lastUpdated {
+    final d = DateTime.now().difference(project.updatedAt);
+    if (d.inDays > 0) return '${d.inDays} days ago';
+    if (d.inHours > 0) return '${d.inHours}h ago';
+    if (d.inMinutes > 0) return '${d.inMinutes}m ago';
+    return 'Just now';
   }
 
-  // Helper function to get the latest update message
-  String get latestUpdateMessage {
-    if (project.lastUpdates.isEmpty) {
-      return 'Project created';
-    }
-
-    // Sort updates by timestamp to get the latest one
-    final sortedUpdates = List<ProjectUpdate>.from(project.lastUpdates)
+  String get _latestMsg {
+    if (project.lastUpdates.isEmpty) return 'Project created';
+    final s = List<ProjectUpdate>.from(project.lastUpdates)
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-    return sortedUpdates.first.message;
+    return s.first.message;
   }
 
-  // Helper function to get time ago for the latest update
-  String get latestUpdateTime {
-    if (project.lastUpdates.isEmpty) {
-      return 'Just now';
-    }
-
-    // Sort updates by timestamp to get the latest one
-    final sortedUpdates = List<ProjectUpdate>.from(project.lastUpdates)
+  String get _latestWhen {
+    if (project.lastUpdates.isEmpty) return 'Just now';
+    final s = List<ProjectUpdate>.from(project.lastUpdates)
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-    final latestUpdate = sortedUpdates.first;
-    final timeDifference = DateTime.now().difference(latestUpdate.timestamp);
-
-    if (timeDifference.inMinutes < 1) {
-      return 'Just now';
-    } else if (timeDifference.inMinutes < 60) {
-      return '${timeDifference.inMinutes}m ago';
-    } else if (timeDifference.inHours < 24) {
-      return '${timeDifference.inHours}h ago';
-    } else {
-      return '${timeDifference.inDays}d ago';
-    }
+    final d = DateTime.now().difference(s.first.timestamp);
+    if (d.inDays > 0) return '${d.inDays} days';
+    if (d.inHours > 0) return '${d.inHours}h';
+    if (d.inMinutes > 0) return '${d.inMinutes}m';
+    return 'Just now';
   }
 
-  // Count PDF files
-  int get pdfCount {
-    return project.files.where((file) => file.fileName.toLowerCase().endsWith('.pdf')).length;
-  }
+  int get _pdfs =>
+      project.files.where((f) => f.fileName.toLowerCase().endsWith('.pdf')).length;
 
-  // Count image files (common image extensions)
-  int get imageCount {
-    final imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
-    return project.files.where((file) {
-      final fileName = file.fileName.toLowerCase();
-      return imageExtensions.any((ext) => fileName.endsWith(ext));
-    }).length;
-  }
-
-  // Count other files (non-PDF, non-image)
-  int get otherFilesCount {
-    return project.files.length - pdfCount - imageCount;
+  int get _images {
+    const exts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
+    return project.files
+        .where((f) => exts.any((e) => f.fileName.toLowerCase().endsWith(e)))
+        .length;
   }
 
   @override
   Widget build(BuildContext context) {
-    final timeDifference = DateTime.now().difference(project.updatedAt);
-    String lastUpdated = timeDifference.inMinutes < 60
-        ? '${timeDifference.inMinutes}m ago'
-        : '${timeDifference.inHours}h ago';
+    final headerColors = [
+      const Color(0xFF77DD77),
+      const Color(0xFFFF746C),
+      const Color(0xFFFFC067),
+      const Color(0xFFB39EB5),
+      const Color(0xFFAFD5F0),
+    ];
+    final headerColor = headerColors[index % headerColors.length];
 
     return GestureDetector(
-      onTap: () {
-        Get.to(() => ProjectDetails(projectId: project.id));
-      },
+      onTap: () => Get.to(() => ProjectDetails(projectId: project.id)),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: kFillColor,
           border: Border.all(color: kBorderColor, width: 1),
@@ -104,145 +79,166 @@ class ProjectCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      MyText(
-                        text: project.title,
-                        size: 14,
-                        weight: FontWeight.w500,
-                      ),
-                      MyText(
-                        text: '${project.clientName} | ${project.location}',
-                        color: kQuaternaryColor,
-                        size: 12,
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  width: 60,
-                  child: Stack(
-                    children: List.generate(
-                      project.collaborators.take(3).length,
-                          (index) {
-                        final member = project.collaborators[index];
-                        return Container(
-                          margin: EdgeInsets.only(
-                            left: index == 0 ? 0 : index * 16.0,
-                          ),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: kFillColor,
-                              width: 1,
-                            ),
-                          ),
-                          child: CommonImageView(
-                            height: 24,
-                            width: 24,
-                            radius: 100,
-                            url: member.photoUrl.isNotEmpty ? member.photoUrl : dummyImg,
-                            fit: BoxFit.cover,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: InfoChip(
-                    label: 'Last updated:',
-                    value: lastUpdated,
-                  ),
-                ),
-                Expanded(
-                  child: InfoChip(
-                    label: 'Deadline:',
-                    value: formattedDeadlineDate,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            // Combined section for Latest Update and File Counts
+            // ===== TITLE BAR =====
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: headerColor.withOpacity(0.45),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: MyText(
+                text: project.title,
+                size: 15,
+                weight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // ===== INFO SECTIONS =====
+            _infoRowWithDivider('Location', project.location),
+            _memberRowWithDivider(),
+            _infoRowWithDivider('Deadline', _deadline),
+            _infoRowWithDivider('Last Updated', _lastUpdated),
+
+            // ===== LATEST UPDATE =====
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MyText(
+                  text: 'Latest Update:',
+                  size: 12.5,
+                  weight: FontWeight.w600,
+                  color: kTertiaryColor,
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: kGreyColor2,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: MyText(
+                    text: _latestMsg,
+                    size: 11.5,
+                    color: kTertiaryColor,
+                    maxLines: 2,
+                    textOverflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // ===== FILE COUNTS =====
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               decoration: BoxDecoration(
                 color: kGreyColor2,
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  // Latest Update Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      MyText(
-                        text: 'Latest Update',
-                        size: 12,
-                        weight: FontWeight.w600,
-                      ),
-                      MyText(
-                        text: latestUpdateTime,
-                        size: 10,
-                        color: kQuaternaryColor,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: kFillColor,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: MyText(
-                      text: latestUpdateMessage,
-                      size: 11,
-                      color: kTertiaryColor,
-                      maxLines: 2,
-                      textOverflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // File Counts Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      FileCountItem(
-                        icon: Icons.picture_as_pdf, // PDF icon
-                        count: pdfCount,
-                        label: 'PDFs',
-                      ),
-                      FileCountItem(
-                        icon: Icons.photo_library, // Photos icon
-                        count: imageCount,
-                        label: 'Photos',
-                      ),
-                      // _FileCountItem(
-                      //   icon: Icons.insert_drive_file, // Document icon for other files
-                      //   count: otherFilesCount,
-                      //   label: 'Others',
-                      // ),
-                    ],
-                  ),
+                  FileCountItem(icon: Icons.picture_as_pdf, count: _pdfs),
+                  FileCountItem(icon: Icons.camera_alt_outlined, count: _images),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ===== Helper Widgets =====
+
+  Widget _infoRowWithDivider(String label, String value) {
+    return Column(
+      children: [
+        _infoRow(label, value),
+        const Divider(
+          color: Colors.black12,
+          height: 8,
+          thickness: 0.7,
+        ),
+      ],
+    );
+  }
+
+  Widget _memberRowWithDivider() {
+    return Column(
+      children: [
+        _memberRow(),
+        const Divider(
+          color: Colors.black12,
+          height: 8,
+          thickness: 0.7,
+        ),
+      ],
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          MyText(
+            text: '$label:',
+            size: 12.5,
+            weight: FontWeight.w600,
+            color: kTertiaryColor,
+          ),
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: MyText(
+                text: value.isEmpty ? '—' : value,
+                size: 12.5,
+                color: kQuaternaryColor,
+                textAlign: TextAlign.right,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _memberRow() {
+    final members = project.collaborators.take(5).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          MyText(
+            text: 'Members:',
+            size: 12.5,
+            weight: FontWeight.w600,
+            color: kTertiaryColor,
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(members.length, (i) {
+              final member = members[i];
+              return Padding(
+                padding: const EdgeInsets.only(left: 3),
+                child: CommonImageView(
+                  height: 20,
+                  width: 20,
+                  radius: 100,
+                  url: member.photoUrl.isNotEmpty ? member.photoUrl : dummyImg,
+                  fit: BoxFit.cover,
+                ),
+              );
+            }),
+          ),
+        ],
       ),
     );
   }

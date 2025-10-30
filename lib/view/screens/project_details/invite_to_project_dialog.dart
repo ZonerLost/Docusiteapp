@@ -1,5 +1,6 @@
 import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_sizes.dart';
+import 'package:docu_site/view/widget/custom_check_box_widget.dart';
 import 'package:docu_site/view/widget/my_button_widget.dart';
 import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
@@ -15,7 +16,7 @@ class InviteToProjectDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: Get.height * 0.6,
+      height: Get.height * 0.7, // Increased height to accommodate access controls
       margin: EdgeInsets.only(top: 55),
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -61,17 +62,96 @@ class InviteToProjectDialog extends StatelessWidget {
                   controller: controller.memberEmailController,
                   labelText: 'Email Address',
                   hintText: 'Enter email address',
-                  // keyboardType: TextInputType.emailAddress,
                 ),
                 SizedBox(height: 16),
-                // CHANGED: Replace dropdown with text field for custom role
                 SimpleTextField(
-                  controller: controller.memberRoleController, // Add this controller
+                  controller: controller.memberRoleController,
                   labelText: 'Role',
                   hintText: 'e.g., Client, Engineer, Project Manager, etc.',
-                  onChanged: (value) {
-                    controller.selectedMemberRole.value = value;
-                  },
+                ),
+                SizedBox(height: 20),
+
+                // ACCESS CONTROLS - ADDED SECTION
+                MyText(
+                  text: 'Access Level',
+                  size: 16,
+                  weight: FontWeight.w600,
+                  paddingBottom: 12,
+                ),
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: kFillColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: kBorderColor),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // View Access Checkbox
+                      Row(
+                        children: [
+                          CustomCheckBox(
+                            circularRadius: 5,
+                            isActive: controller.hasViewAccess.value,
+                            onTap: () => controller.toggleViewAccess(!controller.hasViewAccess.value),
+                            radius: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: MyText(
+                              text: 'View Access',
+                              size: 14,
+                              weight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 12),
+
+                      // Edit Access Checkbox
+                      Row(
+                        children: [
+                          CustomCheckBox(
+                            circularRadius: 5,
+                            isActive: controller.hasEditAccess.value,
+                            onTap: controller.hasViewAccess.value
+                                ? () => controller.toggleEditAccess(!controller.hasEditAccess.value)
+                                : () {}, // Empty function when disabled
+                            radius: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                MyText(
+                                  text: 'Edit Access',
+                                  size: 14,
+                                  weight: FontWeight.w500,
+                                  color: controller.hasViewAccess.value ? kTertiaryColor : kQuaternaryColor,
+                                ),
+                                if (!controller.hasViewAccess.value)
+                                  MyText(
+                                    text: 'Requires View Access',
+                                    size: 10,
+                                    color: kQuaternaryColor,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      MyText(
+                        text: controller.hasEditAccess.value
+                            ? 'Member can view and edit project details'
+                            : 'Member can only view project details',
+                        size: 12,
+                        color: kQuaternaryColor,
+                      ),
+                    ],
+                  ),
                 ),
                 SizedBox(height: 16),
                 MyText(

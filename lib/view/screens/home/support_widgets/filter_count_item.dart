@@ -7,12 +7,10 @@ import '../../../widget/my_text_widget.dart';
 class FileCountItem extends StatelessWidget {
   final IconData icon;
   final int count;
-  final String label;
 
   const FileCountItem({
     required this.icon,
     required this.count,
-    required this.label,
   });
 
   @override
@@ -36,12 +34,7 @@ class FileCountItem extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 2),
-        MyText(
-          text: label,
-          size: 10,
-          color: kQuaternaryColor,
-        ),
+
       ],
     );
   }

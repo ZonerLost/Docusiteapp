@@ -2,7 +2,7 @@ import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_images.dart';
 import 'package:docu_site/constants/app_sizes.dart';
 import 'package:docu_site/main.dart';
-import 'package:docu_site/view/screens/project_details/edit_images.dart';
+import 'package:docu_site/view/pdf_details/support_widgets/edit_images.dart';
 import 'package:docu_site/view/widget/common_image_view_widget.dart';
 import 'package:docu_site/view/widget/custom_app_bar.dart';
 import 'package:docu_site/view/widget/my_button_widget.dart';

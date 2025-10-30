@@ -1,10 +1,10 @@
 // lib/view/screens/project_details/pdf_details/pdf_details.dart
+import 'dart:io';
 import 'package:docu_site/constants/app_colors.dart';
 import 'package:docu_site/constants/app_images.dart';
 import 'package:docu_site/constants/app_sizes.dart';
-import 'package:docu_site/view/screens/project_details/pdf_details/support_widgets/pdf_drawing_controller.dart';
-import 'package:docu_site/view/screens/project_details/pdf_open_camera.dart';
-import 'package:docu_site/view/screens/project_details/review_pdf.dart';
+import 'package:docu_site/controllers/pdf_drawing/pdf_drawing_controller.dart';
+import 'package:docu_site/view/pdf_details/support_widgets/review_pdf.dart';
 import 'package:docu_site/view/widget/custom_app_bar.dart';
 import 'package:docu_site/view/widget/custom_drop_down_widget.dart';
 import 'package:docu_site/view/widget/custom_tag_field_widget.dart';
@@ -13,8 +13,11 @@ import 'package:docu_site/view/widget/my_text_field_widget.dart';
 import 'package:docu_site/view/widget/my_text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:sheet/sheet.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+
+import '../../utils/time_stamp.dart';
 
 class PdfDetails extends StatelessWidget {
   final String fileUrl;
@@ -58,6 +61,7 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
   final GlobalKey<SfPdfViewerState> _pdfKey = GlobalKey();
   final PdfViewerController _viewerController = PdfViewerController();
   final PdfDrawingController drawing = Get.put(PdfDrawingController());
+  final ValueNotifier<bool> _isToolbarVisible = ValueNotifier(true);
 
   int selectedIndex = 0;
   bool _loadFailed = false;
@@ -71,8 +75,10 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
     {'image': Assets.imagesPens, 'title': 'Pens'},
   ];
 
-  bool get _isDrawMode => selectedIndex == 2;
-  bool get _isPensMode => selectedIndex == 4;
+  bool get _isDrawOrPensMode => selectedIndex == 2 || selectedIndex == 4;
+  bool get _isAnnotateMode => selectedIndex == 1;
+  bool get _isCameraMode => selectedIndex == 3;
+  String get _currentModeTitle => annotationModes[selectedIndex]['title'] as String;
 
   @override
   void initState() {
@@ -89,12 +95,47 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
   @override
   void dispose() {
     _viewerController.removeListener(() {});
+    _isToolbarVisible.dispose();
     super.dispose();
   }
 
   void _saveDrawings() {
     final data = drawing.toJson();
-    debugPrint('Saved drawings: ${data.keys.length} pages');
+    debugPrint('Saved annotations/drawings: ${data.keys.length} pages');
+  }
+
+  Future<void> _handleCameraTap(Offset localPoint) async {
+    if (!_isCameraMode) return;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _PickImageSourceSheet(),
+    );
+
+    if (source == null) return;
+
+    final picker = ImagePicker();
+    final XFile? picked = await picker.pickImage(source: source, imageQuality: 85);
+    if (picked == null) return;
+
+    // Add timestamp to the image
+    final String timestampedImagePath = await TimestampUtils.addTimestampToImage(picked.path);
+
+    drawing.addCameraPinFromScreen(localPoint, timestampedImagePath);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Image with timestamp attached to this spot')),
+      );
+    }
+  }
+
+  // Handle tap in annotation mode to place a new annotation
+  void _handleAnnotationTap(TapDownDetails details) {
+    if (_isAnnotateMode) {
+      drawing.placeNewAnnotation(details.localPosition);
+    }
   }
 
   @override
@@ -103,21 +144,25 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
       appBar: simpleAppBar(
         title: "Back",
         actions: [
-          // Drawing info
-          Obx(() => drawing.getCurrentPageStrokes().isNotEmpty
-              ? Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: kSecondaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: MyText(
-              text: '${drawing.getCurrentPageStrokes().length} strokes',
-              size: 12,
-              color: kSecondaryColor,
-            ),
-          )
-              : const SizedBox.shrink()),
+          Obx(() {
+            final count = drawing.getCurrentPageStrokes().length
+                + drawing.annotationsForPage(drawing.currentPageNumber.value).length
+                + drawing.cameraPinsForPage(drawing.currentPageNumber.value).length;
+            return count > 0
+                ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: kSecondaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: MyText(
+                text: '$count items',
+                size: 12,
+                color: kSecondaryColor,
+              ),
+            )
+                : const SizedBox.shrink();
+          }),
           const SizedBox(width: 8),
           Center(
             child: SizedBox(
@@ -173,21 +218,18 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
 
           // ---------- Drawing Overlay ----------
           Positioned.fill(
-            child: IgnorePointer(
-              ignoring: !(_isDrawMode || _isPensMode),
+            child: IgnorePointer(ignoring: !_isDrawOrPensMode,
               child: GetBuilder<PdfDrawingController>(
                 builder: (_) {
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onPanStart: (_isDrawMode || _isPensMode)
-                        ? (details) => drawing.startNewStrokeFromScreen(details.localPosition)
+                    onPanStart: _isDrawOrPensMode
+                        ? (details) => drawing.startNewStrokeFromScreen(details.localPosition, 1.0)
                         : null,
-                    onPanUpdate: (_isDrawMode || _isPensMode)
-                        ? (details) => drawing.addPointFromScreen(details.localPosition)
+                    onPanUpdate: _isDrawOrPensMode
+                        ? (details) => drawing.addPointFromScreen(details.localPosition, 1.0)
                         : null,
-                    onPanEnd: (_isDrawMode || _isPensMode)
-                        ? (_) => drawing.endStroke()
-                        : null,
+                    onPanEnd: _isDrawOrPensMode ? (_) => drawing.endStroke() : null,
                     child: CustomPaint(
                       painter: _EnhancedDocSpacePainter(controller: drawing),
                     ),
@@ -197,61 +239,75 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
             ),
           ),
 
-          // ---------- Draw toolbar ----------
-          if (_isDrawMode)
+          // ---------- Annotation Overlay ----------
+          Positioned.fill(
+            child: GestureDetector(
+              onTapDown: _handleAnnotationTap,
+              child: _AnnotationOverlay(controller: drawing),
+            ),
+          ),
+
+          // ---------- NEW: Camera Pins Overlay + tap-to-place ----------
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapDown: (d) async {
+                if (_isCameraMode) {
+                  await _handleCameraTap(d.localPosition);
+                }
+              },
+              child: _CameraPinsOverlay(controller: drawing),
+            ),
+          ),
+
+          // ---------- Dynamic Toolbar ----------
+          if (_isDrawOrPensMode)
+            _buildToolbar(
+              toolbar: _DrawingToolbar(
+                controller: drawing,
+                onMinimize: () => _isToolbarVisible.value = false,
+                modeTitle: _currentModeTitle,
+              ),
+            ),
+
+          if (_isAnnotateMode)
+            _buildToolbar(
+              toolbar: _AnnotationToolbar(
+                controller: drawing,
+                onMinimize: () => _isToolbarVisible.value = false,
+                modeTitle: _currentModeTitle,
+              ),
+            ),
+
+          // Camera mode: show a small hint chip on the right
+          if (_isCameraMode)
             Positioned(
               right: 16,
               top: kToolbarHeight + 12,
-              child: _AddNotes(),
-              // child: _DrawToolbar(controller: drawing),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: kBorderColor),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                ),
+                child: Row(
+                  children: const [
+                    Icon(Icons.camera_alt, size: 18),
+                    SizedBox(width: 8),
+                    Text('Tap the PDF to attach a photo'),
+                  ],
+                ),
+              ),
             ),
 
-          // ---------- Pens toolbar ----------
-          if (_isPensMode)
-            Positioned(
-              right: 16,
-              top: kToolbarHeight + 12,
-              child: _AddNotes(),
-              // child: _PensToolbar(controller: drawing),
-            ),
-
-          // ---------- Undo/Redo for both modes ----------
-          if (_isDrawMode || _isPensMode)
+          // ---------- Undo/Redo Toolbar ----------
+          if (_isDrawOrPensMode || _isAnnotateMode || _isCameraMode)
             Positioned(
               left: 16,
               top: kToolbarHeight + 12,
               child: _UndoRedoToolbar(controller: drawing),
-            ),
-
-          // ---------- Existing decorative overlays ----------
-          if (selectedIndex == 1)
-            Positioned(
-              top: 70,
-              left: 30,
-              child: Image.asset(Assets.imagesAnnotation, height: 200),
-            ),
-          if (!_isDrawMode && !_isPensMode)
-            Center(
-              child: _Marker(onTap: () {}, icon: Assets.imagesCameraOnPdf),
-            ),
-          if (selectedIndex == 1)
-            Positioned(
-              right: 20,
-              bottom: 100,
-              child: Column(
-                spacing: 8,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: List.generate(5, (index) {
-                  final List<String> _items = [
-                    Assets.imagesTt,
-                    Assets.imagesEd,
-                    Assets.imagesSave,
-                    Assets.imagesUn,
-                    Assets.imagesRe,
-                  ];
-                  return _Marker(onTap: () {}, icon: _items[index]);
-                }),
-              ),
             ),
 
           // ---------- Bottom modes ----------
@@ -264,11 +320,7 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
               decoration: BoxDecoration(
                 color: kFillColor,
                 boxShadow: [
-                  BoxShadow(
-                    color: kTertiaryColor.withValues(alpha: 0.16),
-                    blurRadius: 12,
-                    offset: const Offset(0, -4),
-                  ),
+                  BoxShadow(color: kTertiaryColor.withValues(alpha: 0.16), blurRadius: 12, offset: const Offset(0, -4)),
                 ],
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 border: Border.all(color: kBorderColor, width: 1),
@@ -278,17 +330,8 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
                 children: [
                   Row(
                     children: [
-                      Expanded(
-                        child: MyText(
-                          text: 'Annotation Modes: ',
-                          size: 16,
-                          weight: FontWeight.w500,
-                        ),
-                      ),
-                      Image.asset(
-                        annotationModes[selectedIndex]['image'] as String,
-                        height: 16,
-                      ),
+                      Expanded(child: MyText(text: 'Annotation Modes: ', size: 16, weight: FontWeight.w500)),
+                      Image.asset(annotationModes[selectedIndex]['image'] as String, height: 16),
                       const SizedBox(width: 8),
                       MyText(
                         text: annotationModes[selectedIndex]['title'] as String,
@@ -311,31 +354,30 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
                         return GestureDetector(
                           onTap: () {
                             setState(() => selectedIndex = index);
+                            _isToolbarVisible.value = true;
+
                             if (mode['title'] == 'Pens') {
-                              // Initialize pens mode with default tool
                               drawing.setPenTool(PenToolType.ballpointPen);
+                            } else if (mode['title'] == 'Draw') {
+                              drawing.setPenTool(PenToolType.marker);
+                            } else if (mode['title'] == 'Annotate') {
+                              drawing.setAnnotationTool(AnnotationToolType.stickyNote);
                             } else if (mode['title'] == 'Camera') {
-                              Get.to(() => PdfOpenCamera());
+                              // Stay on this screen and use tap to place pins
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Tap on the PDF to attach a photo')),
+                              );
                             }
                           },
                           child: Container(
-                            color: isSelected
-                                ? kSecondaryColor.withOpacity(0.05)
-                                : Colors.transparent,
+                            color: isSelected ? kSecondaryColor.withOpacity(0.05) : Colors.transparent,
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Row(
                               children: [
                                 Image.asset(mode['image'] as String, height: 20),
                                 const SizedBox(width: 10),
-                                Expanded(
-                                  child: MyText(
-                                    text: mode['title'] as String,
-                                    size: 16,
-                                    weight: FontWeight.w500,
-                                  ),
-                                ),
-                                if (isSelected)
-                                  Image.asset(Assets.imagesTick, height: 20),
+                                Expanded(child: MyText(text: mode['title'] as String, size: 16, weight: FontWeight.w500)),
+                                if (isSelected) Image.asset(Assets.imagesTick, height: 20),
                               ],
                             ),
                           ),
@@ -353,6 +395,494 @@ class _PdfDetailsSelectableState extends State<_PdfDetailsSelectable> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildToolbar({required Widget toolbar}) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: _isToolbarVisible,
+      builder: (context, isVisible, child) {
+        if (isVisible) {
+          return Positioned(
+            right: 16,
+            top: kToolbarHeight + 12,
+            child: toolbar,
+          );
+        } else {
+          return Positioned(
+            right: 16,
+            top: kToolbarHeight + 12,
+            child: _ToolMinimizeButton(
+              onTap: () => _isToolbarVisible.value = true,
+              modeTitle: _currentModeTitle,
+            ),
+          );
+        }
+      },
+    );
+  }
+}
+
+/// ===== CAMERA: Pins Overlay =====
+class _CameraPinsOverlay extends StatelessWidget {
+  final PdfDrawingController controller;
+  const _CameraPinsOverlay({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final page = controller.currentPageNumber.value;
+      final pins = controller.cameraPinsForPage(page);
+      if (pins.isEmpty) return const SizedBox.shrink();
+
+      final zoom = controller.currentZoom;
+      final scroll = controller.currentScrollOffset;
+
+      return Stack(
+        children: pins.map((pin) {
+          final screenOffset = pin.position.toScreen(scroll, zoom);
+          return Positioned(
+            left: screenOffset.dx - 16,
+            top: screenOffset.dy - 16,
+            child: GestureDetector(
+              onTap: () => _showPinPreview(context, pin),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2), // Very transparent background
+                  shape: BoxShape.circle,
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black12, // Lighter shadow
+                      blurRadius: 3,
+                    ),
+                  ],
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.8), // More visible border
+                    width: 1,
+                  ),
+                ),
+                padding: const EdgeInsets.all(5),
+                child: Icon(
+                  Icons.camera_alt,
+                  size: 18,
+                  color: Colors.black.withOpacity(0.6), // More transparent icon
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      );
+    });
+  }
+
+  void _showPinPreview(BuildContext context, CameraPin pin) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _PinPreviewSheet(pin: pin, controller: controller),
+    );
+  }
+}
+
+class _PinPreviewSheet extends StatelessWidget {
+  final CameraPin pin;
+  final PdfDrawingController controller;
+  const _PinPreviewSheet({required this.pin, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.camera_alt),
+                const SizedBox(width: 8),
+                const Text('Attached Photo', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: () {
+                    controller.removeCameraPin(pin);
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 4 / 3,
+                child: File(pin.imagePath).existsSync()
+                    ? Image.file(
+                  File(pin.imagePath),
+                  fit: BoxFit.contain, // Changed from BoxFit.cover
+                )
+                    : Container(
+                  color: Colors.grey.shade200,
+                  child: const Center(child: Text('Image not found')),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Added: ${pin.createdAt}',
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Pick source sheet
+class _PickImageSourceSheet extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Wrap(
+          runSpacing: 12,
+          children: [
+            const Center(
+              child: Text('Attach Photo', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.photo_camera),
+              title: const Text('Use Camera'),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// **NEW: Annotation Overlay**
+class _AnnotationOverlay extends StatelessWidget {
+  final PdfDrawingController controller;
+  const _AnnotationOverlay({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final page = controller.currentPageNumber.value;
+      final annotations = controller.pageAnnotations[page] ?? [];
+      final zoom = controller.currentZoom;
+      final scroll = controller.currentScrollOffset;
+
+      if (annotations.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
+      return Stack(
+        children: annotations.map((ann) {
+          final screenOffset = ann.position.toScreen(scroll, zoom);
+          final isSelected = controller.selectedAnnotation.value?.id == ann.id;
+
+          return Positioned(
+            left: screenOffset.dx,
+            top: screenOffset.dy,
+            child: GestureDetector(
+              onTap: () => controller.selectAnnotation(ann),
+              child: _AnnotationWidget(
+                annotation: ann,
+                zoom: zoom,
+                isSelected: isSelected,
+                onDrag: (delta) {
+                  // Save undo state before drag starts (simple way)
+                  controller.saveAnnotationUndoState(controller.currentPageNumber.value);
+
+                  final newPositionScreen = screenOffset + delta;
+                  final newPositionDoc = DocPoint.fromScreen(
+                      newPositionScreen, scroll, zoom);
+                  controller.updateAnnotation(ann, newPosition: newPositionDoc);
+                },
+              ),
+            ),
+          );
+        }).toList(),
+      );
+    });
+  }
+}
+
+/// **NEW: Individual Annotation Widget**
+class _AnnotationWidget extends StatelessWidget {
+  final PdfAnnotation annotation;
+  final double zoom;
+  final bool isSelected;
+  final void Function(Offset delta) onDrag;
+
+  const _AnnotationWidget({
+    required this.annotation,
+    required this.zoom,
+    required this.isSelected,
+    required this.onDrag,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveWidth = annotation.width * zoom;
+    final effectiveHeight = annotation.height * zoom;
+
+    return Draggable(
+      data: annotation,
+      feedback: Opacity(
+        opacity: 0.6,
+        child: _buildContent(effectiveWidth, effectiveHeight, isSelected: true),
+      ),
+      childWhenDragging: const SizedBox.shrink(),
+      onDragUpdate: (details) => onDrag(details.delta),
+      child: _buildContent(effectiveWidth, effectiveHeight, isSelected: isSelected),
+    );
+  }
+
+  Widget _buildContent(double width, double height, {required bool isSelected}) {
+    // Determine the content based on the annotation type
+    Widget content;
+    switch (annotation.type) {
+      case AnnotationToolType.text:
+        content = Container(
+          width: width,
+          height: height,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: annotation.color.withOpacity(0.1),
+            border: Border.all(color: annotation.color, width: 1.0 * zoom),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: MyText(
+            text: annotation.text.isEmpty ? 'Tap to edit text' : annotation.text,
+            size: 14 * zoom,
+            color: Colors.black,
+            maxLines: 5,
+            textOverflow: TextOverflow.ellipsis,
+          ),
+        );
+        break;
+      case AnnotationToolType.stickyNote:
+        content = Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: annotation.color,
+            borderRadius: BorderRadius.circular(8 * zoom),
+            boxShadow: [
+              BoxShadow(color: Colors.black38, blurRadius: 4 * zoom, offset: Offset(2 * zoom, 2 * zoom)),
+            ],
+          ),
+          child: Center(
+            child: Icon(
+              Icons.push_pin,
+              size: 30 * zoom,
+              color: Colors.black54,
+            ),
+          ),
+        );
+        break;
+    }
+
+    return Stack(
+      children: [
+        content,
+        if (isSelected)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: kSecondaryColor, width: 2),
+                borderRadius: BorderRadius.circular(annotation.type == AnnotationToolType.stickyNote ? 8 * zoom : 4),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// **NEW: Annotation Toolbar**
+class _AnnotationToolbar extends StatelessWidget {
+  const _AnnotationToolbar({
+    required this.controller,
+    required this.onMinimize,
+    required this.modeTitle,
+  });
+  final PdfDrawingController controller;
+  final VoidCallback onMinimize;
+  final String modeTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+          () => Material(
+        color: Colors.white,
+        elevation: 8,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 280,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(color: kBorderColor),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  MyText(
+                    text: '$modeTitle Tools',
+                    size: 14,
+                    weight: FontWeight.w600,
+                    color: kTertiaryColor,
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close_fullscreen, size: 20),
+                    tooltip: 'Minimize Toolbar',
+                    onPressed: onMinimize,
+                    padding: AppSizes.ZERO,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Tool Selection
+              Row(
+                children: [
+                  _AnnotationToolButton(
+                    type: AnnotationToolType.stickyNote,
+                    icon: Icons.push_pin,
+                    title: 'Note',
+                    isSelected: controller.selectedAnnotationTool.value == AnnotationToolType.stickyNote,
+                    onTap: () => controller.setAnnotationTool(AnnotationToolType.stickyNote),
+                  ),
+                  const SizedBox(width: 12),
+                  _AnnotationToolButton(
+                    type: AnnotationToolType.text,
+                    icon: Icons.text_fields,
+                    title: 'Text Box',
+                    isSelected: controller.selectedAnnotationTool.value == AnnotationToolType.text,
+                    onTap: () => controller.setAnnotationTool(AnnotationToolType.text),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Color Selection
+              _buildColorSelection(),
+              const SizedBox(height: 16),
+
+              // Delete button for selected annotation
+              if (controller.selectedAnnotation.value != null)
+                MyButton(
+                  buttonText: 'Delete Annotation',
+                  onTap: () => controller.removeAnnotation(controller.selectedAnnotation.value!),
+                  bgColor: kRedColor,
+                  height: 40,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorSelection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MyText(
+          text: 'Color',
+          size: 14,
+          weight: FontWeight.w600,
+          color: kTertiaryColor,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: controller.availableColors.map((color) {
+            final isSelected = controller.selectedColor.value.value == color.value;
+            return _ColorCircle(
+              color: color,
+              isSelected: isSelected,
+              onTap: () => controller.setColor(color),
+              size: 28,
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+}
+
+class _AnnotationToolButton extends StatelessWidget {
+  final AnnotationToolType type;
+  final IconData icon;
+  final String title;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _AnnotationToolButton({
+    required this.type,
+    required this.icon,
+    required this.title,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? kSecondaryColor.withOpacity(0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? kSecondaryColor : kBorderColor,
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 24, color: isSelected ? kSecondaryColor : kTertiaryColor),
+              const SizedBox(height: 4),
+              MyText(
+                text: title,
+                size: 12,
+                color: isSelected ? kSecondaryColor : kTertiaryColor,
+                weight: FontWeight.w600,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -378,22 +908,27 @@ class _EnhancedDocSpacePainter extends CustomPainter {
   }
 
   void _drawStroke(Canvas canvas, DrawingStroke stroke) {
-    final path = Path();
-    final first = stroke.points.first.toScreen(
+    final List<Offset> screenPoints = stroke.points.map((p) => p.toScreen(
       controller.currentScrollOffset,
       controller.currentZoom,
-    );
-    path.moveTo(first.dx, first.dy);
+    )).toList();
 
-    for (int i = 1; i < stroke.points.length; i++) {
-      final point = stroke.points[i].toScreen(
-        controller.currentScrollOffset,
-        controller.currentZoom,
-      );
-      path.lineTo(point.dx, point.dy);
+    final path = Path();
+    path.moveTo(screenPoints.first.dx, screenPoints.first.dy);
+
+    for (int i = 1; i < screenPoints.length - 1; i++) {
+      final p1 = screenPoints[i];
+      final p2 = screenPoints[i + 1];
+
+      final endP = Offset((p1.dx + p2.dx) / 2, (p1.dy + p2.dy) / 2);
+      path.quadraticBezierTo(p1.dx, p1.dy, endP.dx, endP.dy);
     }
 
-    final paint = Paint()
+    if (screenPoints.length > 1) {
+      path.lineTo(screenPoints.last.dx, screenPoints.last.dy);
+    }
+
+    final basePaint = Paint()
       ..color = stroke.color
       ..style = PaintingStyle.stroke
       ..strokeCap = stroke.toolType == PenToolType.highlighter
@@ -402,30 +937,25 @@ class _EnhancedDocSpacePainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..isAntiAlias = true;
 
-    // Apply tool-specific rendering
-    switch (stroke.toolType) {
-      case PenToolType.pencil:
-        paint.strokeWidth = stroke.width;
-        paint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.0);
-        break;
-      case PenToolType.highlighter:
-        paint.strokeWidth = stroke.width;
-        paint.blendMode = BlendMode.multiply;
-        break;
-      case PenToolType.fountainPen:
-      case PenToolType.calligraphyPen:
-      // Variable width based on pressure
-        if (stroke.points.length >= 2) {
-          _drawVariableWidthStroke(canvas, stroke, paint);
-          return;
-        }
-        paint.strokeWidth = stroke.width;
-        break;
-      default:
-        paint.strokeWidth = stroke.width;
+    // We only use the variable width drawing for pressure-sensitive tools (fountain/calligraphy/pencil)
+    if (stroke.toolType == PenToolType.fountainPen ||
+        stroke.toolType == PenToolType.calligraphyPen ||
+        stroke.toolType == PenToolType.pencil) {
+      if (stroke.points.length >= 2) {
+        _drawVariableWidthStroke(canvas, stroke, basePaint);
+        return;
+      }
     }
 
-    canvas.drawPath(path, paint);
+    basePaint.strokeWidth = stroke.width * controller.currentZoom;
+
+    if (stroke.toolType == PenToolType.pencil) {
+      basePaint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.0);
+    } else if (stroke.toolType == PenToolType.highlighter) {
+      basePaint.blendMode = BlendMode.multiply;
+    }
+
+    canvas.drawPath(path, basePaint);
   }
 
   void _drawVariableWidthStroke(Canvas canvas, DrawingStroke stroke, Paint basePaint) {
@@ -439,8 +969,23 @@ class _EnhancedDocSpacePainter extends CustomPainter {
         controller.currentZoom,
       );
 
-      final width = stroke.getEffectiveWidth(i);
-      final paint = basePaint..strokeWidth = width;
+      final effectiveWidth = stroke.getEffectiveWidth(i) * controller.currentZoom;
+
+      // FIXED: Create new paint with all properties copied manually
+      final paint = Paint()
+        ..color = basePaint.color
+        ..style = PaintingStyle.stroke
+        ..strokeCap = basePaint.strokeCap
+        ..strokeJoin = basePaint.strokeJoin
+        ..isAntiAlias = true
+        ..strokeWidth = effectiveWidth;
+
+      // Apply tool-specific effects
+      if (stroke.toolType == PenToolType.pencil) {
+        paint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.0);
+      } else if (stroke.toolType == PenToolType.highlighter) {
+        paint.blendMode = BlendMode.multiply;
+      }
 
       canvas.drawLine(start, end, paint);
     }
@@ -450,10 +995,16 @@ class _EnhancedDocSpacePainter extends CustomPainter {
   bool shouldRepaint(covariant _EnhancedDocSpacePainter old) => true;
 }
 
-// ===== Enhanced Pens Toolbar =====
-class _PensToolbar extends StatelessWidget {
-  const _PensToolbar({required this.controller});
+// ===== Combined Drawing Toolbar =====
+class _DrawingToolbar extends StatelessWidget {
+  const _DrawingToolbar({
+    required this.controller,
+    required this.onMinimize,
+    required this.modeTitle,
+  });
   final PdfDrawingController controller;
+  final VoidCallback onMinimize;
+  final String modeTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -472,8 +1023,29 @@ class _PensToolbar extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Header with Minimize Button
+              Row(
+                children: [
+                  MyText(
+                    text: '$modeTitle Tools',
+                    size: 14,
+                    weight: FontWeight.w600,
+                    color: kTertiaryColor,
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close_fullscreen, size: 20),
+                    tooltip: 'Minimize Toolbar',
+                    onPressed: onMinimize,
+                    padding: AppSizes.ZERO,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
               // Tool selection
-              _buildToolSelection(),
+              _buildToolSelection(modeTitle),
               const SizedBox(height: 16),
 
               // Color selection
@@ -493,12 +1065,15 @@ class _PensToolbar extends StatelessWidget {
     );
   }
 
-  Widget _buildToolSelection() {
+  Widget _buildToolSelection(String modeTitle) {
+    // Only show pen selection in "Pens" mode
+    if (modeTitle != 'Pens') return const SizedBox.shrink();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         MyText(
-          text: 'Pen Tools',
+          text: 'Pen Type',
           size: 14,
           weight: FontWeight.w600,
           color: kTertiaryColor,
@@ -535,7 +1110,7 @@ class _PensToolbar extends StatelessWidget {
           spacing: 6,
           runSpacing: 6,
           children: controller.availableColors.map((color) {
-            final isSelected = controller.selectedColor.value == color;
+            final isSelected = controller.selectedColor.value.value == color.value;
             return _ColorCircle(
               color: color,
               isSelected: isSelected,
@@ -649,9 +1224,19 @@ class _PenToolButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final config = _getToolConfig(tool);
+    final Map<PenToolType, String> _toolNames = {
+      PenToolType.ballpointPen: 'Ballpoint',
+      PenToolType.fountainPen: 'Fountain',
+      PenToolType.highlighter: 'Highlighter',
+      PenToolType.pencil: 'Pencil',
+      PenToolType.marker: 'Marker',
+      PenToolType.calligraphyPen: 'Calligraphy',
+      PenToolType.technicalPen: 'Technical',
+    };
+    final toolName = _toolNames[tool]!;
+
     return Tooltip(
-      message: _getToolName(tool),
+      message: toolName,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
@@ -671,9 +1256,9 @@ class _PenToolButton extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _getToolIcon(tool),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               Text(
-                _getToolName(tool).substring(0, 3),
+                toolName.substring(0, 3),
                 style: TextStyle(
                   fontSize: 8,
                   color: isSelected ? kSecondaryColor : kTertiaryColor,
@@ -705,55 +1290,43 @@ class _PenToolButton extends StatelessWidget {
         return const Icon(Icons.architecture, size: 16);
     }
   }
+}
 
-  String _getToolName(PenToolType tool) {
-    switch (tool) {
-      case PenToolType.ballpointPen: return 'Ballpoint';
-      case PenToolType.fountainPen: return 'Fountain';
-      case PenToolType.highlighter: return 'Highlighter';
-      case PenToolType.pencil: return 'Pencil';
-      case PenToolType.marker: return 'Marker';
-      case PenToolType.calligraphyPen: return 'Calligraphy';
-      case PenToolType.technicalPen: return 'Technical';
-    }
-  }
+// ===== Minimized Toolbar Button =====
+class _ToolMinimizeButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final String modeTitle;
 
-  PenToolConfig _getToolConfig(PenToolType tool) {
-    final configs = {
-      PenToolType.ballpointPen: PenToolConfig(
-        minWidth: 1.0, maxWidth: 5.0, defaultWidth: 2.0,
-        supportsPressure: false, opacity: 1.0, strokeCap: StrokeCap.round,
+  const _ToolMinimizeButton({required this.onTap, required this.modeTitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Show $modeTitle Tools',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: kSecondaryColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Icon(Icons.settings, color: Colors.white, size: 24),
+        ),
       ),
-      PenToolType.fountainPen: PenToolConfig(
-        minWidth: 0.5, maxWidth: 8.0, defaultWidth: 3.0,
-        supportsPressure: true, opacity: 1.0, strokeCap: StrokeCap.round,
-      ),
-      PenToolType.highlighter: PenToolConfig(
-        minWidth: 10.0, maxWidth: 30.0, defaultWidth: 15.0,
-        supportsPressure: false, opacity: 0.4, strokeCap: StrokeCap.square,
-      ),
-      PenToolType.pencil: PenToolConfig(
-        minWidth: 0.5, maxWidth: 6.0, defaultWidth: 2.0,
-        supportsPressure: true, opacity: 0.8, strokeCap: StrokeCap.round,
-      ),
-      PenToolType.marker: PenToolConfig(
-        minWidth: 8.0, maxWidth: 25.0, defaultWidth: 12.0,
-        supportsPressure: false, opacity: 0.7, strokeCap: StrokeCap.square,
-      ),
-      PenToolType.calligraphyPen: PenToolConfig(
-        minWidth: 2.0, maxWidth: 15.0, defaultWidth: 5.0,
-        supportsPressure: true, opacity: 1.0, strokeCap: StrokeCap.round,
-      ),
-      PenToolType.technicalPen: PenToolConfig(
-        minWidth: 0.3, maxWidth: 3.0, defaultWidth: 1.0,
-        supportsPressure: false, opacity: 1.0, strokeCap: StrokeCap.round,
-      ),
-    };
-    return configs[tool]!;
+    );
   }
 }
 
-// ===== Undo/Redo Toolbar =====
+// ===== Undo/Redo Toolbar (No changes, now used for all drawing modes) =====
 class _UndoRedoToolbar extends StatelessWidget {
   const _UndoRedoToolbar({required this.controller});
   final PdfDrawingController controller;
@@ -874,13 +1447,9 @@ class _ColorCircle extends StatelessWidget {
   }
 }
 
-// Keep your existing _DrawToolbar, _Marker, and bottom sheet classes...
-// [The rest of your existing classes remain the same]
-
 class _DrawToolbar extends StatelessWidget {
   const _DrawToolbar({required this.controller});
   final PdfDrawingController controller;
-
   @override
   Widget build(BuildContext context) {
     return Obx(
@@ -897,7 +1466,6 @@ class _DrawToolbar extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Tool toggle
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -915,8 +1483,6 @@ class _DrawToolbar extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-
-              // Colors
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -931,7 +1497,7 @@ class _DrawToolbar extends StatelessWidget {
                           color: c,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: controller.selectedColor.value == c ? kSecondaryColor : Colors.white,
+                            color: controller.selectedColor.value.value == c.value ? kSecondaryColor : Colors.white,
                             width: 2,
                           ),
                           boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)],
@@ -941,8 +1507,6 @@ class _DrawToolbar extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-
-              // Width slider
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -960,28 +1524,6 @@ class _DrawToolbar extends StatelessWidget {
                 ],
               ),
               const Divider(height: 8),
-
-              // Undo / Redo / Clear
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Undo',
-                    icon: const Icon(Icons.undo),
-                    onPressed: controller.undo,
-                  ),
-                  IconButton(
-                    tooltip: 'Redo',
-                    icon: const Icon(Icons.redo),
-                    onPressed: controller.redo,
-                  ),
-                  IconButton(
-                    tooltip: 'Clear page',
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: controller.clearCurrentPage,
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -1032,8 +1574,6 @@ class _Marker extends StatelessWidget {
   }
 }
 
-// ----- Bottom sheets kept as in your version -----
-
 class _AddNotes extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -1049,9 +1589,9 @@ class _AddNotes extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           MyText(text: 'Add Notes', size: 18, weight: FontWeight.w500, paddingBottom: 8),
-           MyText(text: 'Add important notes to this annotation.', color: kQuaternaryColor, weight: FontWeight.w500, size: 13),
+          MyText(text: 'Add important notes to this annotation.', color: kQuaternaryColor, weight: FontWeight.w500, size: 13),
           Container(height: 1, color: kBorderColor, margin: const EdgeInsets.symmetric(vertical: 12)),
-           Expanded(
+          Expanded(
             child: ListView(
               shrinkWrap: true,
               padding: AppSizes.ZERO,
@@ -1083,7 +1623,7 @@ class _ExportPDF extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           MyText(text: 'Add Info', size: 18, weight: FontWeight.w500, paddingBottom: 8),
-           MyText(text: 'Please enter the correct information to export a pdf.', color: kQuaternaryColor, weight: FontWeight.w500, size: 13),
+          MyText(text: 'Please enter the correct information to export a pdf.', color: kQuaternaryColor, weight: FontWeight.w500, size: 13),
           Container(height: 1, color: kBorderColor, margin: const EdgeInsets.symmetric(vertical: 12)),
           Expanded(
             child: ListView(
@@ -1091,8 +1631,8 @@ class _ExportPDF extends StatelessWidget {
               padding: AppSizes.ZERO,
               physics: const BouncingScrollPhysics(),
               children: [
-                 SimpleTextField(labelText: 'Project location', hintText: 'St 3 Wilsons Road, California, USA'),
-                 CustomDropDown(
+                SimpleTextField(labelText: 'Project location', hintText: 'St 3 Wilsons Road, California, USA'),
+                CustomDropDown(
                   labelText: 'Status',
                   hintText: 'Select status',
                   items: ['Select status', 'In Progress', 'Completed', 'Pending'],
@@ -1101,7 +1641,7 @@ class _ExportPDF extends StatelessWidget {
                 ),
                 Row(
                   children: [
-                     Expanded(
+                    Expanded(
                       child: MyText(text: 'Assign Members', size: 14, weight: FontWeight.w500, color: kQuaternaryColor),
                     ),
                     MyText(
@@ -1115,8 +1655,8 @@ class _ExportPDF extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 const CustomTagField(),
-                 SimpleTextField(labelText: 'Description', hintText: 'Lorem ipsum dolor aist amaet', maxLines: 3),
-                 SimpleTextField(labelText: 'Conclusion', hintText: 'Lorem ipsum dolor aist amaet', maxLines: 3),
+                SimpleTextField(labelText: 'Description', hintText: 'Lorem ipsum dolor aist amaet', maxLines: 3),
+                SimpleTextField(labelText: 'Conclusion', hintText: 'Lorem ipsum dolor aist amaet', maxLines: 3),
               ],
             ),
           ),
@@ -1148,9 +1688,9 @@ class _InviteNewMember extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           MyText(text: 'Invite new member', size: 18, weight: FontWeight.w500, paddingBottom: 8),
-           MyText(text: 'Please enter the correct information to add a new member.', color: kQuaternaryColor, weight: FontWeight.w500, size: 13),
+          MyText(text: 'Please enter the correct information to add a new member.', color: kQuaternaryColor, weight: FontWeight.w500, size: 13),
           Container(height: 1, color: kBorderColor, margin: const EdgeInsets.symmetric(vertical: 12)),
-           Expanded(
+          Expanded(
             child: ListView(
               shrinkWrap: true,
               padding: AppSizes.ZERO,
